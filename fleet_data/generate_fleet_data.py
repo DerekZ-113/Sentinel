@@ -151,6 +151,8 @@ class Vehicle:
         # anomaly tracking
         self.is_anomaly = False        # ground truth label
         self.anomaly_type = None       # breakdown, battery, stuck, wrong speed, erratic behavior, unsafe stop location, rider emergency
+        self.anomaly_duration = 0.0
+        self.anomaly_remaining = 0.0
 
         # context timing
         self.second_until_traffic_change = None  # traffic clears; construction zone clear time
@@ -182,50 +184,94 @@ class Vehicle:
         else:
             self.construction_zone_ends_at = None
 
-    def update(self, sim_time):
-        # check and update the context
-        self.seconds_until_traffic_change -= 1
-        if self.seconds_until_traffic_change <= 0:
-            # self.traffic_condition = random.choices(list(TRAFFIC_CONDITION.keys()), weights=[value['weight'] for value in TRAFFIC_CONDITION.values()], k=1)[0]
-            traffic_weights = get_traffic_weights(sim_time)
-            self.traffic_condition = random.choices(
-                list(traffic_weights.keys()),
-                weights=list(traffic_weights.values()),
-                k=1
-            )[0]
-            
-            self.seconds_until_traffic_change = random.randint(300, 900)
-            self.expected_speed = self.calculate_expected_speed()
+    def maybe_trigger_anomaly(self):
+        
+        if self.is_anomaly:
+            return
+        
+        if random.random() > 0.001:
+            return
 
-        if self.construction_zone_ends_at is not None:
-            self.construction_zone_ends_at -= 1
-            if self.construction_zone_ends_at <= 0:
-                self.construction_zone = 'none'
-                self.construction_zone_ends_at = None
+        # stuck and wrong speed
+        can_be_stuck = self.target_speed > 10
+
+        if can_be_stuck:
+            self.anomaly_type = random.choice(['stuck', 'wrong_speed'])
+        else:
+            self.anomaly_type = 'wrong_speed'
+
+        if self.anomaly_type == 'stuck':
+            self.anomaly_duration = random.randint(120, 600)
+        else:
+            self.anomaly_duration = random.randint(60, 300)
+
+        self.is_anomaly = True
+        self.anomaly_remaining = self.anomaly_duration
+
+    def update(self, sim_time):
+
+        # check for possible new anomaly
+        self.maybe_trigger_anomaly()
+
+        if self.is_anomaly:
+            self.anomaly_remaining -= 1
+
+            if self.anomaly_type == 'stuck':
+                self.speed = 0
+            elif self.anomaly_type == 'wrong_speed':
+                self.speed = self.expected_speed * random.uniform(0.3, 0.5)
+        
+            if self.anomaly_remaining <= 0:
+                self.is_anomaly = False
+                self.anomaly_type = None
+                self.anomaly_duration = 0
+                self.anomaly_remaining = 0
+        
+        else:
+
+            # check and update the context
+            self.seconds_until_traffic_change -= 1
+            if self.seconds_until_traffic_change <= 0:
+                # self.traffic_condition = random.choices(list(TRAFFIC_CONDITION.keys()), weights=[value['weight'] for value in TRAFFIC_CONDITION.values()], k=1)[0]
+                traffic_weights = get_traffic_weights(sim_time)
+                self.traffic_condition = random.choices(
+                    list(traffic_weights.keys()),
+                    weights=list(traffic_weights.values()),
+                    k=1
+                )[0]
+                
+                self.seconds_until_traffic_change = random.randint(300, 900)
                 self.expected_speed = self.calculate_expected_speed()
 
-        self.target_speed = self.expected_speed
+            if self.construction_zone_ends_at is not None:
+                self.construction_zone_ends_at -= 1
+                if self.construction_zone_ends_at <= 0:
+                    self.construction_zone = 'none'
+                    self.construction_zone_ends_at = None
+                    self.expected_speed = self.calculate_expected_speed()
 
-        speed_diff = self.target_speed - self.speed
-        self.speed += speed_diff * 0.15
+            self.target_speed = self.expected_speed
 
-        # Add small variations to speed to imitate real world car speed
-        self.speed += random.uniform(-1, 1)
+            speed_diff = self.target_speed - self.speed
+            self.speed += speed_diff * 0.15
 
-        self.latitude += random.uniform(-0.0001, 0.0001)
-        self.longitude += random.uniform(-0.0001, 0.0001)
+            # Add small variations to speed to imitate real world car speed
+            self.speed += random.uniform(-1, 1)
 
-        # Update stopped duration
-        if self.speed < 5:
-            self.status = 'stopped'
-            self.stopped_duration += 1
-        else:
-            self.status = 'moving'
-            self.stopped_duration = 0
+            self.latitude += random.uniform(-0.0001, 0.0001)
+            self.longitude += random.uniform(-0.0001, 0.0001)
 
-        # Ensure speed is always greater than 0
-        if self.speed < 0:
-            self.speed = 0
+            # Update stopped duration
+            if self.speed < 5:
+                self.status = 'stopped'
+                self.stopped_duration += 1
+            else:
+                self.status = 'moving'
+                self.stopped_duration = 0
+
+            # Ensure speed is always greater than 0
+            if self.speed < 0:
+                self.speed = 0
 
 # ============================================================================
 # MAIN SIMULATION LOOP
@@ -331,15 +377,26 @@ if __name__ == "__main__":
 #     test_vehicle = Vehicle("test_001")
 #     test_vehicle.assign_initial_context()
     
-#     test_vehicle.seconds_until_traffic_change = 10
-
+#     # Force a high expected speed so stuck can trigger
+#     test_vehicle.expected_speed = 45
+#     test_vehicle.target_speed = 45
+#     test_vehicle.speed = 40
+    
 #     sim_time = datetime(2024, 12, 1, 7, 30, 0)
     
-#     print(f"Road: {test_vehicle.road_type} | Traffic: {test_vehicle.traffic_condition}")
-#     print(f"Location: ({test_vehicle.latitude:.4f}, {test_vehicle.longitude:.4f})")
+#     print(f"Road: {test_vehicle.road_type} | Expected: {test_vehicle.expected_speed}")
+#     print()
+    
+#     # Force trigger an anomaly for testing
+#     test_vehicle.is_anomaly = True
+#     test_vehicle.anomaly_type = 'stuck'
+#     test_vehicle.anomaly_duration = 10
+#     test_vehicle.anomaly_remaining = 10
+    
+#     print("Forcing 'stuck' anomaly for 10 ticks...")
 #     print()
     
 #     for tick in range(15):
 #         test_vehicle.update(sim_time)
 #         sim_time += timedelta(seconds=1)
-#         print(f"Tick {tick+1:2d}: {test_vehicle.speed:5.1f} mph | Loc: ({test_vehicle.latitude:.4f}, {test_vehicle.longitude:.4f}) | {test_vehicle.traffic_condition}")
+#         print(f"Tick {tick+1:2d}: Speed={test_vehicle.speed:5.1f} | Anomaly={test_vehicle.is_anomaly} | Remaining={test_vehicle.anomaly_remaining}")

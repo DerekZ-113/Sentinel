@@ -372,31 +372,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# if __name__ == "__main__":
-#     test_vehicle = Vehicle("test_001")
-#     test_vehicle.assign_initial_context()
-    
-#     # Force a high expected speed so stuck can trigger
-#     test_vehicle.expected_speed = 45
-#     test_vehicle.target_speed = 45
-#     test_vehicle.speed = 40
-    
-#     sim_time = datetime(2024, 12, 1, 7, 30, 0)
-    
-#     print(f"Road: {test_vehicle.road_type} | Expected: {test_vehicle.expected_speed}")
-#     print()
-    
-#     # Force trigger an anomaly for testing
-#     test_vehicle.is_anomaly = True
-#     test_vehicle.anomaly_type = 'stuck'
-#     test_vehicle.anomaly_duration = 10
-#     test_vehicle.anomaly_remaining = 10
-    
-#     print("Forcing 'stuck' anomaly for 10 ticks...")
-#     print()
-    
-#     for tick in range(15):
-#         test_vehicle.update(sim_time)
-#         sim_time += timedelta(seconds=1)
-#         print(f"Tick {tick+1:2d}: Speed={test_vehicle.speed:5.1f} | Anomaly={test_vehicle.is_anomaly} | Remaining={test_vehicle.anomaly_remaining}")

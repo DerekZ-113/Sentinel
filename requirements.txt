@@ -1,4 +1,19 @@
+# Sentinel - Fleet Anomaly Detection System
+# Python dependencies
+
+# Core ML
+torch>=2.0.0
+numpy>=1.24.0
+
+# Data handling
+pandas>=2.0.0
+scikit-learn>=1.3.0
+sqlalchemy>=2.0.0
 psycopg2-binary>=2.9.0
 
+# Visualization & monitoring
+tensorboard>=2.14.0
+matplotlib>=3.7.0
 
-
+# Database
+# Note: TimescaleDB runs in Docker, not installed via pip

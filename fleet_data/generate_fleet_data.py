@@ -1,13 +1,13 @@
 """
-Sentinel Fleet Data Generator
+Sentinel Fleet Data Generator v2.0
 
-Simulates an autonomous vehicle fleet with:
-- 200 vehicles operating over 7 days
-- Realistic traffic patterns (rush hour, midday, nighttime)
-- Construction zones and traffic conditions
-- Injected anomalies (stuck, wrong_speed) with ground truth labels
+Simulates an autonomous vehicle fleet notification system with:
+- 500 vehicles operating over 7 days
+- 6 notification types (verification_request, emergency_vehicle_alert, stuck, etc.)
+- Context-aware false positive labeling
+- Realistic traffic patterns
 
-Output: ~10.8M records in TimescaleDB
+Output: ~18M+ records in TimescaleDB
 """
 
 import random
@@ -17,7 +17,7 @@ import signal
 import sys
 
 # ============================================================================
-# CONSTANTS
+# CONSTANTS - ROAD CONTEXT
 # ============================================================================
 
 ROAD_TYPE = {
@@ -43,6 +43,47 @@ CONSTRUCTION_ZONE = {
 }
 
 # ============================================================================
+# CONSTANTS - NOTIFICATION TYPES
+# ============================================================================
+
+NOTIFICATION_TYPES = {
+    'verification_request': {
+        'frequency': 0.003,
+        'duration': (30, 120),
+        'subtypes': {
+            'object_query':          {'share': 0.75, 'fp_rate': 0.90},
+            'traffic_signal_verify': {'share': 0.15, 'fp_rate': 0.10},
+            'lane_mapping_verify':   {'share': 0.10, 'fp_rate': 0.30},
+        },
+    },
+    'emergency_vehicle_alert': {
+        'frequency': 0.001,
+        'fp_rate': 0.70,
+        'duration': (20, 60),
+    },
+    'stuck': {
+        'frequency': 0.001,
+        'fp_rate': 0.65,
+        'duration': (120, 600),
+    },
+    'speed_anomaly': {
+        'frequency': 0.0008,
+        'fp_rate': 0.50,
+        'duration': (60, 300),
+    },
+    'impact_l0': {
+        'frequency': 0.0002,
+        'fp_rate': 0.40,
+        'duration': (30, 90),
+    },
+    'passenger_assist': {
+        'frequency': 0.0001,
+        'fp_rate': 0.0,  # Always needs intervention
+        'duration': (60, 300),
+    },
+}
+
+# ============================================================================
 # DATABASE CONNECTION
 # ============================================================================
 
@@ -62,21 +103,24 @@ def connect_to_database():
         print(f"❌ Failed to connect to database: {e}")
         sys.exit(1)
 
+
 def insert_batch(cursor, batch_data):
     """Insert a batch of vehicle metrics into the database"""
     try:
         cursor.executemany("""
             INSERT INTO vehicle_metrics (
                 time, vehicle_id, speed, latitude, longitude, status,
-                road_type, traffic_condition, construction_zone,
-                expected_speed, is_anomaly, anomaly_type
+                road_type, traffic_condition, construction_zone, expected_speed,
+                notification_type, notification_subtype, needs_intervention,
+                ev_distance, pedestrian_density, object_in_path, time_since_stop
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, batch_data)
         return True
     except Exception as e:
         print(f"❌ Error inserting batch: {e}")
         return False
+
 
 # ============================================================================
 # TRAFFIC PATTERNS
@@ -108,6 +152,33 @@ def get_traffic_weights(sim_time):
             'standstill': 0.1
         }
 
+
+def get_pedestrian_density(road_type, hour):
+    """Returns pedestrian density based on location and time"""
+    base_density = {
+        'highway': 0.0,
+        'main_road': 0.3,
+        'residential': 0.4,
+        'downtown': 0.7,
+        'school_zone': 0.5,
+    }
+    
+    # Adjust for time of day
+    if 7 <= hour <= 9 or 16 <= hour <= 18:  # Rush hours
+        time_modifier = 1.3
+    elif 10 <= hour <= 15:  # Midday
+        time_modifier = 1.0
+    elif 19 <= hour <= 22:  # Evening
+        time_modifier = 0.7
+    else:  # Night
+        time_modifier = 0.2
+    
+    density = base_density[road_type] * time_modifier
+    # Add randomness
+    density += random.uniform(-0.1, 0.1)
+    return max(0.0, min(1.0, density))
+
+
 # ============================================================================
 # VEHICLE CLASS
 # ============================================================================
@@ -126,19 +197,24 @@ class Vehicle:
         self.expected_speed = 0.0
 
         # Status
-        self.status = 'stopped'
-        self.stopped_duration = 0
+        self.status = 'moving'
+        self.time_since_stop = 0.0
 
         # Context
         self.road_type = None
         self.traffic_condition = None
         self.construction_zone = None
 
-        # Anomaly tracking
-        self.is_anomaly = False
-        self.anomaly_type = None
-        self.anomaly_duration = 0.0
-        self.anomaly_remaining = 0.0
+        # Notification state
+        self.active_notification = None
+        self.notification_subtype = None
+        self.notification_remaining = 0
+        self.needs_intervention = False
+        
+        # Notification context
+        self.ev_distance = None
+        self.pedestrian_density = 0.0
+        self.object_in_path = False
 
         # Context timing
         self.seconds_until_traffic_change = None
@@ -180,104 +256,202 @@ class Vehicle:
         else:
             self.construction_zone_ends_at = None
 
-    def maybe_trigger_anomaly(self):
+    def maybe_trigger_notification(self, sim_time):
         """
-        Randomly trigger an anomaly (0.1% chance per tick).
-        
-        Anomaly types:
-        - stuck: Vehicle stops completely when it should be moving
-        - wrong_speed: Vehicle moves at 30-50% of expected speed
+        Randomly trigger a notification based on frequencies.
+        Determines if it needs intervention based on context.
         """
-        if self.is_anomaly:
+        if self.active_notification:
             return
         
-        if random.random() > 0.001:
-            return
+        # Check each notification type
+        for notif_type, config in NOTIFICATION_TYPES.items():
+            if random.random() < config['frequency']:
+                self._trigger_notification(notif_type, config, sim_time)
+                return
 
-        # Can only be "stuck" if we should be moving
-        can_be_stuck = self.target_speed > 10
-
-        if can_be_stuck:
-            self.anomaly_type = random.choice(['stuck', 'wrong_speed'])
+    def _trigger_notification(self, notif_type, config, sim_time):
+        """Set up a notification with appropriate context"""
+        self.active_notification = notif_type
+        self.notification_remaining = random.randint(*config['duration'])
+        
+        # Handle subtypes for verification_request
+        if notif_type == 'verification_request':
+            subtypes = config['subtypes']
+            subtype_names = list(subtypes.keys())
+            subtype_weights = [subtypes[s]['share'] for s in subtype_names]
+            self.notification_subtype = random.choices(subtype_names, weights=subtype_weights)[0]
+            fp_rate = subtypes[self.notification_subtype]['fp_rate']
         else:
-            self.anomaly_type = 'wrong_speed'
+            self.notification_subtype = None
+            fp_rate = config['fp_rate']
+        
+        # Determine needs_intervention based on FP rate and context
+        self.needs_intervention = self._determine_intervention(notif_type, fp_rate, sim_time)
+        
+        # Set context-specific fields
+        self._set_notification_context(notif_type, sim_time)
 
-        # Set anomaly duration
-        if self.anomaly_type == 'stuck':
-            self.anomaly_duration = random.randint(120, 600)  # 2-10 minutes
+    def _determine_intervention(self, notif_type, base_fp_rate, sim_time):
+        """
+        Determine if notification needs intervention.
+        Context can shift the FP rate.
+        """
+        # Start with base FP rate
+        fp_rate = base_fp_rate
+        
+        # Context adjustments
+        if notif_type == 'verification_request' and self.notification_subtype == 'object_query':
+            # Higher pedestrian density = more likely FP (just someone walking by)
+            if self.pedestrian_density > 0.5:
+                fp_rate = min(0.95, fp_rate + 0.05)
+            # If vehicle is moving, more likely real obstruction
+            if self.speed > 10:
+                fp_rate = max(0.70, fp_rate - 0.10)
+                
+        elif notif_type == 'emergency_vehicle_alert':
+            # Will be set properly in context
+            pass
+            
+        elif notif_type == 'stuck':
+            # If there's traffic/construction, more likely FP
+            if self.traffic_condition in ['heavy', 'standstill']:
+                fp_rate = min(0.85, fp_rate + 0.15)
+            if self.construction_zone != 'none':
+                fp_rate = min(0.90, fp_rate + 0.20)
+            # If clear conditions, more likely real
+            if self.traffic_condition == 'light' and self.construction_zone == 'none':
+                fp_rate = max(0.30, fp_rate - 0.25)
+                
+        elif notif_type == 'speed_anomaly':
+            # Similar to stuck
+            if self.traffic_condition in ['heavy', 'standstill']:
+                fp_rate = min(0.80, fp_rate + 0.20)
+            if self.construction_zone != 'none':
+                fp_rate = min(0.85, fp_rate + 0.25)
+                
+        elif notif_type == 'impact_l0':
+            # Rough roads more likely FP
+            if self.road_type in ['residential', 'downtown']:
+                fp_rate = min(0.60, fp_rate + 0.15)
+        
+        # Roll the dice
+        is_false_positive = random.random() < fp_rate
+        return not is_false_positive  # needs_intervention = NOT a false positive
+
+    def _set_notification_context(self, notif_type, sim_time):
+        """Set context fields based on notification type"""
+        hour = sim_time.hour
+        
+        # Update pedestrian density
+        self.pedestrian_density = get_pedestrian_density(self.road_type, hour)
+        
+        if notif_type == 'emergency_vehicle_alert':
+            # EV distance affects whether it's relevant
+            if self.needs_intervention:
+                self.ev_distance = random.uniform(10, 100)  # Close = real
+            else:
+                self.ev_distance = random.uniform(150, 500)  # Far = FP
+                
+        elif notif_type == 'verification_request' and self.notification_subtype == 'object_query':
+            # Object in path affects intervention need
+            self.object_in_path = self.needs_intervention
+            
         else:
-            self.anomaly_duration = random.randint(60, 300)   # 1-5 minutes
-
-        self.is_anomaly = True
-        self.anomaly_remaining = self.anomaly_duration
+            self.ev_distance = None
+            self.object_in_path = False
 
     def update(self, sim_time):
         """Update vehicle state for one simulation tick (1 second)"""
         
-        # Check for new anomaly
-        self.maybe_trigger_anomaly()
+        # Check for new notification
+        self.maybe_trigger_notification(sim_time)
 
-        if self.is_anomaly:
-            # Anomaly behavior
-            self.anomaly_remaining -= 1
-
-            if self.anomaly_type == 'stuck':
+        if self.active_notification:
+            # Handle active notification
+            self.notification_remaining -= 1
+            
+            # Notification affects vehicle behavior
+            if self.active_notification == 'stuck':
                 self.speed = 0
-            elif self.anomaly_type == 'wrong_speed':
-                self.speed = self.expected_speed * random.uniform(0.3, 0.5)
-        
-            # End anomaly when duration expires
-            if self.anomaly_remaining <= 0:
-                self.is_anomaly = False
-                self.anomaly_type = None
-                self.anomaly_duration = 0
-                self.anomaly_remaining = 0
+            elif self.active_notification == 'speed_anomaly':
+                if self.needs_intervention:
+                    self.speed = self.expected_speed * random.uniform(0.2, 0.4)
+                else:
+                    self.speed = self.expected_speed * random.uniform(0.4, 0.6)
+            elif self.active_notification == 'impact_l0':
+                self.speed = max(0, self.speed - 5)  # Slow down after impact
+            elif self.active_notification == 'passenger_assist':
+                self.speed = 0  # Stop for passenger
+            
+            # End notification when duration expires
+            if self.notification_remaining <= 0:
+                self._clear_notification()
         
         else:
             # Normal behavior
-            
-            # Update traffic condition periodically
-            self.seconds_until_traffic_change -= 1
-            if self.seconds_until_traffic_change <= 0:
-                traffic_weights = get_traffic_weights(sim_time)
-                self.traffic_condition = random.choices(
-                    list(traffic_weights.keys()),
-                    weights=list(traffic_weights.values())
-                )[0]
-                self.seconds_until_traffic_change = random.randint(300, 900)
+            self._update_context(sim_time)
+            self._update_speed()
+        
+        # Update location
+        self._update_location()
+        
+        # Update stop timer
+        if self.speed < 5:
+            self.status = 'stopped'
+            self.time_since_stop += 1
+        else:
+            self.status = 'moving'
+            self.time_since_stop = 0
+
+    def _clear_notification(self):
+        """Clear active notification state"""
+        self.active_notification = None
+        self.notification_subtype = None
+        self.notification_remaining = 0
+        self.needs_intervention = False
+        self.ev_distance = None
+        self.object_in_path = False
+
+    def _update_context(self, sim_time):
+        """Update road context periodically"""
+        # Update traffic condition
+        self.seconds_until_traffic_change -= 1
+        if self.seconds_until_traffic_change <= 0:
+            traffic_weights = get_traffic_weights(sim_time)
+            self.traffic_condition = random.choices(
+                list(traffic_weights.keys()),
+                weights=list(traffic_weights.values())
+            )[0]
+            self.seconds_until_traffic_change = random.randint(300, 900)
+            self.expected_speed = self.calculate_expected_speed()
+
+        # End construction zone
+        if self.construction_zone_ends_at is not None:
+            self.construction_zone_ends_at -= 1
+            if self.construction_zone_ends_at <= 0:
+                self.construction_zone = 'none'
+                self.construction_zone_ends_at = None
                 self.expected_speed = self.calculate_expected_speed()
 
-            # End construction zone
-            if self.construction_zone_ends_at is not None:
-                self.construction_zone_ends_at -= 1
-                if self.construction_zone_ends_at <= 0:
-                    self.construction_zone = 'none'
-                    self.construction_zone_ends_at = None
-                    self.expected_speed = self.calculate_expected_speed()
+    def _update_speed(self):
+        """Smoothly adjust speed toward target"""
+        self.target_speed = self.expected_speed
+        speed_diff = self.target_speed - self.speed
+        self.speed += speed_diff * 0.15
+        
+        # Add realistic variation
+        self.speed += random.uniform(-1, 1)
+        
+        # Clamp to non-negative
+        if self.speed < 0:
+            self.speed = 0
 
-            # Smooth speed transition
-            self.target_speed = self.expected_speed
-            speed_diff = self.target_speed - self.speed
-            self.speed += speed_diff * 0.15
+    def _update_location(self):
+        """Update GPS coordinates with small movement"""
+        self.latitude += random.uniform(-0.0001, 0.0001)
+        self.longitude += random.uniform(-0.0001, 0.0001)
 
-            # Add realistic speed variation
-            self.speed += random.uniform(-1, 1)
-
-            # Update location (small random movement)
-            self.latitude += random.uniform(-0.0001, 0.0001)
-            self.longitude += random.uniform(-0.0001, 0.0001)
-
-            # Update status
-            if self.speed < 5:
-                self.status = 'stopped'
-                self.stopped_duration += 1
-            else:
-                self.status = 'moving'
-                self.stopped_duration = 0
-
-            # Clamp speed to non-negative
-            if self.speed < 0:
-                self.speed = 0
 
 # ============================================================================
 # MAIN SIMULATION
@@ -298,7 +472,7 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     
     # Initialize fleet
-    num_vehicles = 200
+    num_vehicles = 500
     num_days = 7
     vehicles = [Vehicle(f"vehicle_{i:03d}") for i in range(num_vehicles)]
 
@@ -308,15 +482,20 @@ def main():
     sim_time = datetime(2024, 12, 1, 7, 30, 0)
     end_time = datetime(2024, 12, 1 + num_days, 7, 30, 0)
     
+    # Calculate expected records
+    total_seconds = num_days * 24 * 60 * 60
+    records_per_sample = num_vehicles
+    sample_interval = 5
+    expected_records = (total_seconds // sample_interval) * records_per_sample
+    
     print(f"🚗 Simulating {num_vehicles} vehicles for {num_days} days")
-    print(f"📊 Expected records: ~{num_vehicles * num_days * 24 * 60 * 12:,}")
+    print(f"📊 Expected records: ~{expected_records:,}")
     print("Press Ctrl+C to stop\n")
     
     batch_data = []
-    iteration = 0
+    records_inserted = 0
     
     while sim_time < end_time:
-        iteration += 1
         
         for vehicle in vehicles:
             vehicle.update(sim_time)
@@ -335,14 +514,20 @@ def main():
                     vehicle.traffic_condition,
                     vehicle.construction_zone,
                     vehicle.expected_speed,
-                    vehicle.is_anomaly,
-                    vehicle.anomaly_type
+                    vehicle.active_notification,
+                    vehicle.notification_subtype,
+                    vehicle.needs_intervention if vehicle.active_notification else None,
+                    vehicle.ev_distance,
+                    vehicle.pedestrian_density,
+                    vehicle.object_in_path if vehicle.active_notification else None,
+                    vehicle.time_since_stop if vehicle.speed < 5 else None
                 ))
 
-        # Insert when batch reaches 1000 records
-        if len(batch_data) >= 1000:
+        # Insert when batch reaches 5000 records
+        if len(batch_data) >= 5000:
             if insert_batch(cursor, batch_data):
                 conn.commit()
+                records_inserted += len(batch_data)
                 batch_data = []
         
         sim_time += timedelta(seconds=1)
@@ -351,14 +536,17 @@ def main():
         if sim_time.minute == 0 and sim_time.second == 0:
             speeds = [v.speed for v in vehicles]
             avg_speed = sum(speeds) / len(speeds)
-            stopped_count = sum(1 for s in speeds if s < 5)
+            active_notifs = sum(1 for v in vehicles if v.active_notification)
             print(f"[{sim_time.strftime('%a %I:%M %p')}] "
-                  f"Avg: {avg_speed:.1f} mph | Stopped: {stopped_count}")
+                  f"Avg: {avg_speed:.1f} mph | "
+                  f"Active notifications: {active_notifs} | "
+                  f"Records: {records_inserted:,}")
 
     # Insert remaining data
     if batch_data:
         if insert_batch(cursor, batch_data):
             conn.commit()
+            records_inserted += len(batch_data)
             print(f"✅ Inserted final {len(batch_data)} records")
     
     cursor.close()
@@ -367,6 +555,8 @@ def main():
     print(f"\n✅ Simulation complete!")
     print(f"   Vehicles: {num_vehicles}")
     print(f"   Duration: {num_days} days")
+    print(f"   Total records: {records_inserted:,}")
+
 
 if __name__ == "__main__":
     main()

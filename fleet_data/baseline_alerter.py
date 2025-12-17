@@ -1,10 +1,14 @@
-from functools import total_ordering
-import psycopg2
-from collections import defaultdict
+"""
+Sentinel Baseline Alerter
 
-# ============================================================================
-# DATABASE CONNECTION
-# ============================================================================
+Simple rule-based alerting that treats ALL notifications as needing intervention.
+This is the "before" state - what operators deal with without ML triage.
+
+This establishes the baseline false positive rate we're trying to beat.
+"""
+
+import psycopg2
+
 
 def connect_to_database():
     """Connect to TimescaleDB"""
@@ -17,116 +21,132 @@ def connect_to_database():
     )
     return conn
 
-# ============================================================================
-# BASELINE ALERTER
-# ============================================================================
 
-# Thresholds (in number of records, each record = 5 seconds)
-STUCK_THRESHOLD = 60      # 5 minutes at speed = 0
-SLOW_THRESHOLD = 120      # 10 minutes at speed < 5
-
-def run_baseline_alerter():
+def analyze_baseline():
     """
-    Run the baseline (dumb) alerter that only looks at speed thresholds.
-    Returns list of alerts and comparison with ground truth.
+    Analyze what happens if we treat every notification as needing intervention.
+    This is the baseline that operators currently experience.
     """
     conn = connect_to_database()
     cursor = conn.cursor()
     
-    # TODO: Query data and apply rules
-    # Query all data ordered by vehicle, then time
+    print("=" * 70)
+    print("BASELINE ALERTER ANALYSIS")
+    print("Strategy: Treat ALL notifications as needing intervention")
+    print("=" * 70)
+    
+    # Overall stats
     cursor.execute("""
-        SELECT vehicle_id, time, speed, is_anomaly, anomaly_type
+        SELECT 
+            COUNT(*) as total_records,
+            COUNT(*) FILTER (WHERE notification_type IS NOT NULL) as total_notifications,
+            COUNT(*) FILTER (WHERE needs_intervention = true) as real_interventions,
+            COUNT(*) FILTER (WHERE notification_type IS NOT NULL AND needs_intervention = false) as false_positives
         FROM vehicle_metrics
-        ORDER BY vehicle_id, time
     """)
     
-    rows = cursor.fetchall()
-
-    alerts = []
-
-    current_vehicle = None
-    consecutive_stopped = 0
-    alert_fired = False # Don't fire multiple alerts for same stop event
-
-    for row in rows:
-        vehicle_id, time, speed, is_anomaly, anomaly_type = row
-
-        # Reset when switching to new vehicle
-        if vehicle_id != current_vehicle:
-            current_vehicle = vehicle_id
-            consecutive_stopped = 0
-            alert_fired = False
+    row = cursor.fetchone()
+    total_records = row[0]
+    total_notifications = row[1]
+    real_interventions = row[2]
+    false_positives = row[3]
+    
+    print(f"\n📊 OVERALL STATISTICS")
+    print(f"   Total records: {total_records:,}")
+    print(f"   Total notifications: {total_notifications:,}")
+    print(f"   Real interventions needed: {real_interventions:,}")
+    print(f"   False positives: {false_positives:,}")
+    
+    if total_notifications > 0:
+        fp_rate = false_positives / total_notifications * 100
+        precision = real_interventions / total_notifications * 100
+        print(f"\n   📈 Baseline False Positive Rate: {fp_rate:.1f}%")
+        print(f"   📈 Baseline Precision: {precision:.1f}%")
+    
+    # Per notification type breakdown
+    print(f"\n{'=' * 70}")
+    print("BREAKDOWN BY NOTIFICATION TYPE")
+    print(f"{'=' * 70}")
+    
+    cursor.execute("""
+        SELECT 
+            notification_type,
+            notification_subtype,
+            COUNT(*) as total,
+            COUNT(*) FILTER (WHERE needs_intervention = true) as real,
+            COUNT(*) FILTER (WHERE needs_intervention = false) as fp
+        FROM vehicle_metrics
+        WHERE notification_type IS NOT NULL
+        GROUP BY notification_type, notification_subtype
+        ORDER BY total DESC
+    """)
+    
+    print(f"\n{'Type':<30} {'Subtype':<25} {'Total':>10} {'Real':>10} {'FP':>10} {'FP Rate':>10}")
+    print("-" * 95)
+    
+    for row in cursor.fetchall():
+        notif_type = row[0]
+        subtype = row[1] or '-'
+        total = row[2]
+        real = row[3]
+        fp = row[4]
+        fp_rate = (fp / total * 100) if total > 0 else 0
         
-        # Check if stopped
-        if speed < 5:
-            consecutive_stopped += 1
-
-            # Fire alert if threshold exceeded (and haven't already fired for this event)
-            if consecutive_stopped >= STUCK_THRESHOLD and not alert_fired:
-                alerts.append((vehicle_id, time, 'STUCK', is_anomaly, anomaly_type))
-                alert_fired = True
+        print(f"{notif_type:<30} {subtype:<25} {total:>10,} {real:>10,} {fp:>10,} {fp_rate:>9.1f}%")
+    
+    # Summary by main type only
+    print(f"\n{'=' * 70}")
+    print("SUMMARY BY MAIN TYPE")
+    print(f"{'=' * 70}")
+    
+    cursor.execute("""
+        SELECT 
+            notification_type,
+            COUNT(*) as total,
+            COUNT(*) FILTER (WHERE needs_intervention = true) as real,
+            COUNT(*) FILTER (WHERE needs_intervention = false) as fp
+        FROM vehicle_metrics
+        WHERE notification_type IS NOT NULL
+        GROUP BY notification_type
+        ORDER BY total DESC
+    """)
+    
+    print(f"\n{'Type':<35} {'Total':>12} {'Real':>12} {'FP':>12} {'FP Rate':>12}")
+    print("-" * 85)
+    
+    type_stats = {}
+    for row in cursor.fetchall():
+        notif_type = row[0]
+        total = row[1]
+        real = row[2]
+        fp = row[3]
+        fp_rate = (fp / total * 100) if total > 0 else 0
         
-        else:
-            # Vehicle moving - reset counter
-            consecutive_stopped = 0
-            alert_fired = False
-
+        type_stats[notif_type] = {'total': total, 'real': real, 'fp': fp, 'fp_rate': fp_rate}
+        print(f"{notif_type:<35} {total:>12,} {real:>12,} {fp:>12,} {fp_rate:>11.1f}%")
+    
+    # Operator workload analysis
+    print(f"\n{'=' * 70}")
+    print("OPERATOR WORKLOAD ANALYSIS")
+    print(f"{'=' * 70}")
+    
+    if total_notifications > 0:
+        # Assuming 7 days of data
+        notifs_per_day = total_notifications / 7
+        fps_per_day = false_positives / 7
+        real_per_day = real_interventions / 7
+        
+        print(f"\n   Notifications per day: {notifs_per_day:,.0f}")
+        print(f"   False positives per day: {fps_per_day:,.0f}")
+        print(f"   Real interventions per day: {real_per_day:,.0f}")
+        print(f"\n   ⚠️  Operators waste time on {fps_per_day:,.0f} false alarms daily")
+        print(f"   ⚠️  Only {real_per_day/notifs_per_day*100:.1f}% of notifications need action")
+    
     cursor.close()
     conn.close()
+    
+    return type_stats
 
-    return alerts
-
-def calculate_metrics(alerts):
-    true_positive = 0
-    false_positive = 0
-
-    for alert in alerts:
-        vehicle_id, time, alert_type, is_anomaly, anomaly_type = alert
-
-        if is_anomaly:
-            true_positive += 1
-        else:
-            false_positive += 1
-
-    total_alerts = len(alerts)
-
-    if total_alerts > 0:
-        fp_rate = (false_positive / total_alerts) * 100
-        precision = (true_positive / total_alerts) * 100
-    else:
-        fp_rate = 0
-        precision = 0
-
-    return {
-        'total_alerts': total_alerts,
-        'true_positives': true_positive,
-        'false_positives': false_positive,
-        'fp_rate': fp_rate,
-        'precision': precision
-    }
 
 if __name__ == "__main__":
-    print("Running baseline alerter...")
-    print("=" * 50)
-    
-    alerts = run_baseline_alerter()
-    metrics = calculate_metrics(alerts)
-    
-    print(f"\n📊 BASELINE ALERTER RESULTS")
-    print("=" * 50)
-    print(f"Total alerts fired:    {metrics['total_alerts']}")
-    print(f"True positives:        {metrics['true_positives']}")
-    print(f"False positives:       {metrics['false_positives']}")
-    print(f"")
-    print(f"False positive rate:   {metrics['fp_rate']:.1f}%")
-    print(f"Precision:             {metrics['precision']:.1f}%")
-    print("=" * 50)
-    
-    # Show some example alerts
-    print(f"\n📋 Sample Alerts (first 10):")
-    print("-" * 50)
-    for alert in alerts[:10]:
-        vehicle_id, time, alert_type, is_anomaly, anomaly_type = alert
-        status = "✓ TRUE" if is_anomaly else "✗ FALSE"
-        print(f"{time} | {vehicle_id} | {alert_type} | {status} | {anomaly_type or 'normal'}")
+    analyze_baseline()

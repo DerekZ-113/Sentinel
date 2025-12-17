@@ -1,126 +1,98 @@
 """
-VAE (Variational Autoencoder) for Anomaly Detection - Production Version
+Sentinel VAE Model v2.0
 
-UPGRADES FROM BASIC VERSION:
-============================
-1. Deeper architecture (3 layers instead of 1)
-2. Dropout for regularization (prevents overfitting)
-3. Batch normalization (stabilizes training)
-4. Configurable architecture via parameters
-5. GPU-ready (CUDA/MPS compatible)
-
-ARCHITECTURE:
-=============
-Input (7) → 64 → 32 → Latent (8) → 32 → 64 → Output (7)
-                ↓
-         With dropout + batch norm between layers
+Variational Autoencoder for notification triage.
+Learns patterns of false positives (no intervention needed).
+High reconstruction error = likely needs real intervention.
 """
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# ============================================================================
-# VAE MODEL - PRODUCTION VERSION
-# ============================================================================
 
 class VAE(nn.Module):
     """
-    Variational Autoencoder with deeper architecture and regularization.
+    Variational Autoencoder for notification triage.
     
-    NEW PYTORCH CONCEPTS:
-    ====================
+    Architecture: Input → Encoder → Latent (mu, logvar) → Decoder → Output
     
-    nn.Dropout(p=0.2):
-        Randomly zeros 20% of inputs during training.
-        Prevents overfitting by forcing redundancy.
-        Automatically disabled during eval() mode.
-    
-    nn.BatchNorm1d(features):
-        Normalizes layer outputs to mean=0, std=1.
-        Stabilizes and accelerates training.
-        Has learnable scale/shift parameters.
-    
-    nn.Sequential(*layers):
-        Chains multiple layers into one callable.
-        Cleaner than calling each layer manually.
+    The model learns to reconstruct "false positive" patterns.
+    Real interventions have high reconstruction error because
+    the model hasn't learned those patterns.
     """
     
-    def __init__(self, input_dim=7, hidden_dims=[64, 32], latent_dim=8, dropout=0.2):
-        """
-        Args:
-            input_dim: Number of input features (7 for our data)
-            hidden_dims: List of hidden layer sizes [64, 32]
-            latent_dim: Size of latent space (8)
-            dropout: Dropout probability (0.2 = 20%)
-        """
+    def __init__(self, input_dim=18, hidden_dims=[128, 64], latent_dim=16, dropout=0.2):
         super(VAE, self).__init__()
         
         self.input_dim = input_dim
         self.latent_dim = latent_dim
         
-        # ========================
+        # ========================================
         # ENCODER
-        # ========================
-        # Build encoder layers dynamically
+        # ========================================
         encoder_layers = []
         prev_dim = input_dim
         
         for hidden_dim in hidden_dims:
             encoder_layers.extend([
                 nn.Linear(prev_dim, hidden_dim),
-                nn.BatchNorm1d(hidden_dim),  # Normalize activations
+                nn.BatchNorm1d(hidden_dim),
                 nn.ReLU(),
-                nn.Dropout(dropout)           # Regularization
+                nn.Dropout(dropout),
             ])
             prev_dim = hidden_dim
         
-        # nn.Sequential chains all layers together
         self.encoder = nn.Sequential(*encoder_layers)
         
-        # Latent space projections (mu and logvar)
+        # Latent space (mean and log variance)
         self.fc_mu = nn.Linear(hidden_dims[-1], latent_dim)
         self.fc_logvar = nn.Linear(hidden_dims[-1], latent_dim)
         
-        # ========================
+        # ========================================
         # DECODER
-        # ========================
-        # Mirror the encoder architecture
+        # ========================================
         decoder_layers = []
-        prev_dim = latent_dim
+        decoder_dims = [latent_dim] + hidden_dims[::-1]  # Reverse hidden dims
         
-        for hidden_dim in reversed(hidden_dims):
+        for i in range(len(decoder_dims) - 1):
             decoder_layers.extend([
-                nn.Linear(prev_dim, hidden_dim),
-                nn.BatchNorm1d(hidden_dim),
+                nn.Linear(decoder_dims[i], decoder_dims[i+1]),
+                nn.BatchNorm1d(decoder_dims[i+1]),
                 nn.ReLU(),
-                nn.Dropout(dropout)
+                nn.Dropout(dropout),
             ])
-            prev_dim = hidden_dim
+        
+        # Final output layer (no activation - will apply sigmoid in loss)
+        decoder_layers.append(nn.Linear(decoder_dims[-1], input_dim))
         
         self.decoder = nn.Sequential(*decoder_layers)
         
-        # Output projection
-        self.fc_out = nn.Linear(hidden_dims[0], input_dim)
-    
+        # Print architecture
+        total_params = sum(p.numel() for p in self.parameters())
+        print(f"VAE Architecture: {input_dim} → {hidden_dims} → {latent_dim} → {hidden_dims[::-1]} → {input_dim}")
+        print(f"Total parameters: {total_params:,}")
+
     def encode(self, x):
-        """Encode input to latent distribution parameters."""
+        """Encode input to latent space parameters"""
         h = self.encoder(x)
         mu = self.fc_mu(h)
         logvar = self.fc_logvar(h)
         return mu, logvar
-    
+
     def reparameterize(self, mu, logvar):
-        """Sample from latent distribution using reparameterization trick."""
+        """
+        Reparameterization trick: z = mu + std * epsilon
+        Allows backprop through sampling.
+        """
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
         return mu + eps * std
-    
+
     def decode(self, z):
-        """Decode latent representation to reconstruction."""
-        h = self.decoder(z)
-        return torch.sigmoid(self.fc_out(h))
-    
+        """Decode latent vector to reconstruction"""
+        return self.decoder(z)
+
     def forward(self, x):
         """Full forward pass: encode → sample → decode"""
         mu, logvar = self.encode(x)
@@ -128,90 +100,71 @@ class VAE(nn.Module):
         reconstruction = self.decode(z)
         return reconstruction, mu, logvar
 
-# ============================================================================
-# LOSS FUNCTION
-# ============================================================================
+    def get_reconstruction_error(self, x):
+        """
+        Get per-sample reconstruction error for anomaly detection.
+        Higher error = less like training data = more likely real intervention.
+        """
+        self.eval()
+        with torch.no_grad():
+            reconstruction, _, _ = self.forward(x)
+            # MSE per sample
+            error = torch.mean((x - reconstruction) ** 2, dim=1)
+        return error
 
-def vae_loss(reconstruction, x, mu, logvar, kl_weight=1.0):
+
+def vae_loss(reconstruction, x, mu, logvar, beta=1.0):
     """
-    VAE Loss = Reconstruction Loss + KL Divergence
+    VAE loss = Reconstruction loss + KL divergence
     
-    NEW: kl_weight parameter allows tuning the balance.
-    Lower kl_weight = focus more on reconstruction accuracy.
+    Args:
+        reconstruction: Decoder output
+        x: Original input
+        mu: Latent mean
+        logvar: Latent log variance
+        beta: Weight for KL term (beta-VAE)
+    
+    Returns:
+        total_loss, reconstruction_loss, kl_loss
     """
-    # Reconstruction loss (binary cross entropy)
-    recon_loss = F.binary_cross_entropy(reconstruction, x, reduction='sum')
+    # Reconstruction loss (MSE)
+    recon_loss = F.mse_loss(reconstruction, x, reduction='mean')
     
-    # KL divergence
-    kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    # KL divergence: -0.5 * sum(1 + logvar - mu^2 - exp(logvar))
+    kl_loss = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
     
-    # Weighted total
-    total_loss = recon_loss + kl_weight * kl_loss
+    # Total loss
+    total_loss = recon_loss + beta * kl_loss
     
     return total_loss, recon_loss, kl_loss
 
-# ============================================================================
-# MODEL SUMMARY UTILITY
-# ============================================================================
-
-def count_parameters(model):
-    """Count total trainable parameters."""
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-def model_summary(model):
-    """Print model architecture summary."""
-    print("\n" + "=" * 60)
-    print("MODEL ARCHITECTURE")
-    print("=" * 60)
-    print(model)
-    print("-" * 60)
-    print(f"Total trainable parameters: {count_parameters(model):,}")
-    print("=" * 60)
 
 # ============================================================================
-# TEST
+# QUICK TEST
 # ============================================================================
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("VAE MODEL TEST - PRODUCTION VERSION")
-    print("=" * 60)
-    
-    # Detect device
-    if torch.cuda.is_available():
-        device = torch.device('cuda')
-        print(f"🎮 Using CUDA GPU: {torch.cuda.get_device_name(0)}")
-    elif torch.backends.mps.is_available():
-        device = torch.device('mps')
-        print("🍎 Using Apple MPS GPU")
-    else:
-        device = torch.device('cpu')
-        print("💻 Using CPU")
+    print("Testing VAE model...")
     
     # Create model
-    model = VAE(
-        input_dim=7,
-        hidden_dims=[64, 32],
-        latent_dim=8,
-        dropout=0.2
-    ).to(device)
-    
-    model_summary(model)
+    model = VAE(input_dim=18, hidden_dims=[128, 64], latent_dim=16)
     
     # Test forward pass
-    print("\n🧪 Testing forward pass...")
-    dummy_input = torch.rand(32, 7).to(device)  # Batch of 32
+    x = torch.randn(32, 18)  # Batch of 32, 18 features
+    reconstruction, mu, logvar = model(x)
     
-    model.eval()  # Set to eval mode (disables dropout)
-    with torch.no_grad():
-        reconstruction, mu, logvar = model(dummy_input)
-    
-    print(f"   Input shape:  {dummy_input.shape}")
-    print(f"   Output shape: {reconstruction.shape}")
-    print(f"   Latent shape: {mu.shape}")
+    print(f"\nInput shape: {x.shape}")
+    print(f"Reconstruction shape: {reconstruction.shape}")
+    print(f"Mu shape: {mu.shape}")
+    print(f"Logvar shape: {logvar.shape}")
     
     # Test loss
-    loss, recon, kl = vae_loss(reconstruction, dummy_input, mu, logvar)
-    print(f"\n📉 Loss: {loss.item():.2f} (Recon: {recon.item():.2f}, KL: {kl.item():.2f})")
+    loss, recon, kl = vae_loss(reconstruction, x, mu, logvar)
+    print(f"\nLoss: {loss.item():.4f} (Recon: {recon.item():.4f}, KL: {kl.item():.4f})")
+    
+    # Test reconstruction error
+    error = model.get_reconstruction_error(x)
+    print(f"Reconstruction error shape: {error.shape}")
+    print(f"Mean error: {error.mean().item():.4f}")
     
     print("\n✅ Model test passed!")

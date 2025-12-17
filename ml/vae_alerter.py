@@ -1,242 +1,251 @@
 """
-VAE-Based Anomaly Detection - Production Version
+Sentinel VAE Alerter v2.0
 
-Evaluates trained VAE on full dataset and compares to baseline alerter.
+Evaluates VAE-based notification triage system.
+Compares against baseline (all notifications = intervention needed).
+Provides per-notification-type breakdown.
 """
 
 import torch
 import numpy as np
 from vae_model import VAE
+from sklearn.metrics import precision_score, recall_score, f1_score
 
-# ============================================================================
-# CONFIGURATION (must match training)
-# ============================================================================
 
-class Config:
-    input_dim = 7
-    hidden_dims = [64, 32]
-    latent_dim = 8
-    dropout = 0.2
-    model_path = 'vae_trained.pt'
-
-config = Config()
-
-# ============================================================================
-# DEVICE SETUP
-# ============================================================================
-
-def get_device():
-    """Auto-detect best available device."""
-    if torch.cuda.is_available():
-        device = torch.device('cuda')
-        print(f"🎮 Using CUDA GPU: {torch.cuda.get_device_name(0)}")
-    elif torch.backends.mps.is_available():
-        device = torch.device('mps')
-        print("🍎 Using Apple MPS GPU")
-    else:
-        device = torch.device('cpu')
-        print("💻 Using CPU")
-    return device
-
-# ============================================================================
-# LOAD MODEL AND DATA
-# ============================================================================
-
-def load_trained_model(config, device):
-    """Load the trained VAE model."""
+def load_model():
+    """Load trained VAE model"""
+    checkpoint = torch.load('vae_trained.pt', map_location='cpu')
+    config = checkpoint['config']
+    
     model = VAE(
-        input_dim=config.input_dim,
-        hidden_dims=config.hidden_dims,
-        latent_dim=config.latent_dim,
-        dropout=config.dropout
+        input_dim=config['input_dim'],
+        hidden_dims=config['hidden_dims'],
+        latent_dim=config['latent_dim'],
+        dropout=config['dropout']
     )
-    model.load_state_dict(torch.load(config.model_path, weights_only=True, map_location=device))
-    model = model.to(device)
+    model.load_state_dict(checkpoint['model_state_dict'])
     model.eval()
     
-    print(f"✅ Loaded trained model from {config.model_path}")
+    print(f"✅ Loaded model from epoch {checkpoint['epoch']}")
+    print(f"   Validation loss: {checkpoint['val_loss']:.4f}")
+    
     return model
 
-def load_all_data():
-    """Load preprocessed data (all records, including anomalies)."""
-    X_all = np.load('X_all.npy')
-    y_all = np.load('y_all.npy')
-    
-    print(f"✅ Loaded {len(X_all):,} records")
-    print(f"   Normal: {(y_all == False).sum():,}")
-    print(f"   Anomaly: {(y_all == True).sum():,}")
-    
-    return X_all, y_all
 
-# ============================================================================
-# CALCULATE RECONSTRUCTION ERROR
-# ============================================================================
-
-def calculate_reconstruction_errors(model, X_all, device, batch_size=4096):
-    """
-    Calculate reconstruction error for each sample.
-    Uses batching for memory efficiency on large datasets.
-    """
-    print("\n🔄 Calculating reconstruction errors...")
-    
-    X_tensor = torch.tensor(X_all, dtype=torch.float32)
+def compute_reconstruction_errors(model, X, batch_size=4096):
+    """Compute reconstruction error for all samples in batches"""
     errors = []
     
-    model.eval()
     with torch.no_grad():
-        for i in range(0, len(X_tensor), batch_size):
-            batch = X_tensor[i:i+batch_size].to(device)
-            reconstruction, _, _ = model(batch)
-            
-            # Mean squared error per sample
-            batch_errors = torch.mean((batch - reconstruction) ** 2, dim=1)
-            errors.append(batch_errors.cpu())
-            
-            # Progress
-            if (i // batch_size) % 10 == 0:
-                print(f"   Processed {min(i+batch_size, len(X_tensor)):,} / {len(X_tensor):,}", end='\r')
+        for i in range(0, len(X), batch_size):
+            batch = torch.FloatTensor(X[i:i+batch_size])
+            batch_errors = model.get_reconstruction_error(batch)
+            errors.extend(batch_errors.numpy())
     
-    errors = torch.cat(errors).numpy()
-    print(f"\n   Error range: {errors.min():.6f} to {errors.max():.6f}")
-    print(f"   Mean error: {errors.mean():.6f}")
-    print(f"   Std error: {errors.std():.6f}")
+    return np.array(errors)
+
+
+def find_optimal_threshold(errors, y_true, min_recall=0.30):
+    """
+    Find threshold that maximizes F1 while maintaining minimum recall.
     
-    return errors
+    For notification triage:
+    - High recall = catch most real interventions (safety)
+    - High precision = fewer false alarms (efficiency)
+    """
+    # Try percentiles from 50 to 99
+    best_f1 = 0
+    best_threshold = np.percentile(errors, 90)
+    
+    for percentile in range(50, 100):
+        threshold = np.percentile(errors, percentile)
+        y_pred = (errors > threshold).astype(int)
+        
+        # y_true: True = needs intervention
+        # y_pred: True = model says needs intervention (high error)
+        
+        if sum(y_pred) == 0:
+            continue
+            
+        recall = recall_score(y_true, y_pred)
+        if recall < min_recall:
+            continue
+            
+        f1 = f1_score(y_true, y_pred)
+        if f1 > best_f1:
+            best_f1 = f1
+            best_threshold = threshold
+    
+    return best_threshold
 
-# ============================================================================
-# THRESHOLD AND DETECTION
-# ============================================================================
 
-def find_optimal_threshold(errors, y_true):
-    """Find threshold that maximizes detection while minimizing false positives."""
+def evaluate():
+    print("=" * 70)
+    print("SENTINEL VAE ALERTER - NOTIFICATION TRIAGE EVALUATION")
+    print("=" * 70)
+    
+    # ========================================
+    # LOAD DATA AND MODEL
+    # ========================================
+    print("\n📥 Loading data and model...")
+    
+    X_all = np.load('X_all.npy')
+    y_all = np.load('y_all.npy')
+    notif_types = np.load('notif_types.npy', allow_pickle=True)
+    
+    model = load_model()
+    
+    print(f"   Total notifications: {len(X_all):,}")
+    print(f"   Real interventions: {sum(y_all):,}")
+    print(f"   False positives: {sum(~y_all):,}")
+    
+    # ========================================
+    # COMPUTE RECONSTRUCTION ERRORS
+    # ========================================
+    print("\n🔍 Computing reconstruction errors...")
+    errors = compute_reconstruction_errors(model, X_all)
+    
+    # Analyze error distribution
+    fp_errors = errors[~y_all]  # False positives (no intervention)
+    real_errors = errors[y_all]  # Real interventions
+    
+    print(f"\n   FP (no intervention) error: mean={np.mean(fp_errors):.4f}, std={np.std(fp_errors):.4f}")
+    print(f"   Real intervention error:    mean={np.mean(real_errors):.4f}, std={np.std(real_errors):.4f}")
+    print(f"   Separation ratio: {np.mean(real_errors) / np.mean(fp_errors):.2f}x")
+    
+    # ========================================
+    # FIND OPTIMAL THRESHOLD
+    # ========================================
     print("\n🎯 Finding optimal threshold...")
+    threshold = find_optimal_threshold(errors, y_all, min_recall=0.50)
+    print(f"   Threshold: {threshold:.6f}")
     
-    normal_errors = errors[y_true == False]
-    anomaly_errors = errors[y_true == True]
+    # ========================================
+    # OVERALL RESULTS
+    # ========================================
+    y_pred = (errors > threshold).astype(int)
     
-    print(f"\n   Normal samples error:  mean={normal_errors.mean():.6f}, std={normal_errors.std():.6f}")
-    print(f"   Anomaly samples error: mean={anomaly_errors.mean():.6f}, std={anomaly_errors.std():.6f}")
-    print(f"   Separation ratio: {anomaly_errors.mean() / normal_errors.mean():.2f}x")
+    # Baseline: all notifications flagged as needing intervention
+    baseline_tp = sum(y_all)
+    baseline_fp = sum(~y_all)
+    baseline_precision = baseline_tp / (baseline_tp + baseline_fp)
+    baseline_fp_rate = baseline_fp / (baseline_tp + baseline_fp)
     
-    results = []
+    # VAE results
+    vae_tp = sum((y_pred == 1) & (y_all == True))
+    vae_fp = sum((y_pred == 1) & (y_all == False))
+    vae_fn = sum((y_pred == 0) & (y_all == True))
+    vae_tn = sum((y_pred == 0) & (y_all == False))
     
-    for percentile in [90, 95, 97, 99]:
-        threshold = np.percentile(normal_errors, percentile)
-        predictions = errors > threshold
+    vae_precision = vae_tp / (vae_tp + vae_fp) if (vae_tp + vae_fp) > 0 else 0
+    vae_recall = vae_tp / (vae_tp + vae_fn) if (vae_tp + vae_fn) > 0 else 0
+    vae_f1 = f1_score(y_all, y_pred)
+    vae_fp_rate = vae_fp / (vae_tp + vae_fp) if (vae_tp + vae_fp) > 0 else 0
+    
+    print(f"\n{'=' * 70}")
+    print("OVERALL RESULTS")
+    print(f"{'=' * 70}")
+    
+    print(f"\n{'Metric':<25} {'Baseline':>15} {'VAE':>15} {'Improvement':>15}")
+    print("-" * 70)
+    print(f"{'False Positive Rate':<25} {baseline_fp_rate*100:>14.1f}% {vae_fp_rate*100:>14.1f}% {(baseline_fp_rate-vae_fp_rate)/baseline_fp_rate*100:>14.1f}%")
+    print(f"{'Precision':<25} {baseline_precision*100:>14.1f}% {vae_precision*100:>14.1f}% {(vae_precision-baseline_precision)/baseline_precision*100:>+14.1f}%")
+    print(f"{'Recall':<25} {'100.0':>14}% {vae_recall*100:>14.1f}%")
+    print(f"{'F1 Score':<25} {'-':>15} {vae_f1*100:>14.1f}%")
+    
+    print(f"\n   VAE Confusion Matrix:")
+    print(f"   TP (caught real): {vae_tp:,}")
+    print(f"   FP (false alarm): {vae_fp:,}")
+    print(f"   TN (filtered FP): {vae_tn:,}")
+    print(f"   FN (missed real): {vae_fn:,}")
+    
+    # ========================================
+    # PER-NOTIFICATION-TYPE BREAKDOWN
+    # ========================================
+    print(f"\n{'=' * 70}")
+    print("RESULTS BY NOTIFICATION TYPE")
+    print(f"{'=' * 70}")
+    
+    # Get unique notification types
+    unique_types = {}
+    for i, (ntype, subtype) in enumerate(notif_types):
+        key = f"{ntype}" + (f"/{subtype}" if subtype else "")
+        if key not in unique_types:
+            unique_types[key] = {'indices': [], 'type': ntype, 'subtype': subtype}
+        unique_types[key]['indices'].append(i)
+    
+    print(f"\n{'Type':<40} {'Baseline FP':>12} {'VAE FP':>12} {'Reduction':>12}")
+    print("-" * 78)
+    
+    type_results = []
+    for key in sorted(unique_types.keys()):
+        info = unique_types[key]
+        indices = info['indices']
         
-        tp = ((predictions == True) & (y_true == True)).sum()
-        fp = ((predictions == True) & (y_true == False)).sum()
-        tn = ((predictions == False) & (y_true == False)).sum()
-        fn = ((predictions == False) & (y_true == True)).sum()
+        type_y = y_all[indices]
+        type_pred = y_pred[indices]
         
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
-        fp_rate = fp / (fp + tn) if (fp + tn) > 0 else 0
+        # Baseline FP rate for this type
+        type_baseline_fp = sum(~type_y) / len(type_y) if len(type_y) > 0 else 0
         
-        results.append({
-            'percentile': percentile,
-            'threshold': threshold,
-            'tp': tp, 'fp': fp, 'tn': tn, 'fn': fn,
-            'precision': precision,
-            'recall': recall,
-            'f1': f1,
-            'fp_rate': fp_rate
+        # VAE FP rate for this type
+        type_vae_alerts = sum(type_pred)
+        type_vae_real = sum((type_pred == 1) & (type_y == True))
+        type_vae_fp_count = sum((type_pred == 1) & (type_y == False))
+        type_vae_fp_rate = type_vae_fp_count / type_vae_alerts if type_vae_alerts > 0 else 0
+        
+        reduction = (type_baseline_fp - type_vae_fp_rate) / type_baseline_fp * 100 if type_baseline_fp > 0 else 0
+        
+        type_results.append({
+            'type': key,
+            'baseline_fp': type_baseline_fp,
+            'vae_fp': type_vae_fp_rate,
+            'reduction': reduction,
+            'count': len(indices)
         })
         
-        print(f"\n   {percentile}th percentile (threshold={threshold:.6f}):")
-        print(f"      Precision={precision:.1%}, Recall={recall:.1%}, F1={f1:.1%}")
+        print(f"{key:<40} {type_baseline_fp*100:>11.1f}% {type_vae_fp_rate*100:>11.1f}% {reduction:>11.1f}%")
     
-    # Select best F1 score with recall > 30%
-    valid_results = [r for r in results if r['recall'] > 0.3]
-    if valid_results:
-        best = max(valid_results, key=lambda x: x['f1'])
-    else:
-        best = results[-1]
+    # ========================================
+    # OPERATOR IMPACT
+    # ========================================
+    print(f"\n{'=' * 70}")
+    print("OPERATOR IMPACT (per day, assuming 7-day dataset)")
+    print(f"{'=' * 70}")
     
-    print(f"\n   ✅ Selected: {best['percentile']}th percentile (F1={best['f1']:.1%})")
+    days = 7
+    total_notifs_per_day = len(X_all) / days
     
-    return best['threshold'], results
+    baseline_alerts_per_day = total_notifs_per_day  # All notifications
+    baseline_fp_per_day = sum(~y_all) / days
+    
+    vae_alerts_per_day = sum(y_pred) / days
+    vae_fp_per_day = vae_fp / days
+    
+    print(f"\n{'Metric':<35} {'Baseline':>15} {'VAE':>15}")
+    print("-" * 65)
+    print(f"{'Alerts per day':<35} {baseline_alerts_per_day:>15,.0f} {vae_alerts_per_day:>15,.0f}")
+    print(f"{'False alarms per day':<35} {baseline_fp_per_day:>15,.0f} {vae_fp_per_day:>15,.0f}")
+    print(f"{'Alerts filtered out':<35} {'-':>15} {(baseline_alerts_per_day - vae_alerts_per_day):>15,.0f}")
+    
+    print(f"\n   🎯 VAE filters out {(baseline_alerts_per_day - vae_alerts_per_day):,.0f} unnecessary alerts per day")
+    print(f"   🎯 Operators handle {vae_alerts_per_day/baseline_alerts_per_day*100:.0f}% of previous workload")
+    
+    # ========================================
+    # SUMMARY TABLE (for README/interviews)
+    # ========================================
+    print(f"\n{'=' * 70}")
+    print("SUMMARY (copy for README)")
+    print(f"{'=' * 70}")
+    
+    print(f"""
+| Metric | Baseline | VAE | Improvement |
+|--------|----------|-----|-------------|
+| False Positive Rate | {baseline_fp_rate*100:.1f}% | {vae_fp_rate*100:.1f}% | ↓ {(baseline_fp_rate-vae_fp_rate)/baseline_fp_rate*100:.0f}% |
+| Precision | {baseline_precision*100:.1f}% | {vae_precision*100:.1f}% | ↑ {(vae_precision-baseline_precision)/baseline_precision*100:.0f}% |
+| Daily Alerts | {baseline_alerts_per_day:,.0f} | {vae_alerts_per_day:,.0f} | ↓ {(baseline_alerts_per_day-vae_alerts_per_day)/baseline_alerts_per_day*100:.0f}% |
+""")
 
-def evaluate_vae_alerter(errors, y_true, threshold):
-    """Final evaluation with chosen threshold."""
-    predictions = errors > threshold
-    
-    tp = ((predictions == True) & (y_true == True)).sum()
-    fp = ((predictions == True) & (y_true == False)).sum()
-    tn = ((predictions == False) & (y_true == False)).sum()
-    fn = ((predictions == False) & (y_true == True)).sum()
-    
-    total_alerts = tp + fp
-    precision = tp / total_alerts if total_alerts > 0 else 0
-    recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-    f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
-    fp_rate = fp / total_alerts if total_alerts > 0 else 0
-    
-    return {
-        'total_alerts': int(total_alerts),
-        'true_positives': int(tp),
-        'false_positives': int(fp),
-        'true_negatives': int(tn),
-        'false_negatives': int(fn),
-        'precision': precision,
-        'recall': recall,
-        'f1': f1,
-        'fp_rate': fp_rate
-    }
-
-# ============================================================================
-# MAIN
-# ============================================================================
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("SENTINEL VAE ANOMALY DETECTION - PRODUCTION VERSION")
-    print("=" * 60)
-    
-    # Setup
-    device = get_device()
-    model = load_trained_model(config, device)
-    X_all, y_all = load_all_data()
-    
-    # Calculate errors
-    errors = calculate_reconstruction_errors(model, X_all, device)
-    
-    # Find threshold
-    threshold, all_results = find_optimal_threshold(errors, y_all)
-    
-    # Final evaluation
-    print("\n" + "=" * 60)
-    print("📊 VAE ALERTER RESULTS")
-    print("=" * 60)
-    
-    metrics = evaluate_vae_alerter(errors, y_all, threshold)
-    
-    print(f"Total alerts fired:    {metrics['total_alerts']:,}")
-    print(f"True positives:        {metrics['true_positives']:,}")
-    print(f"False positives:       {metrics['false_positives']:,}")
-    print(f"")
-    print(f"False positive rate:   {metrics['fp_rate']:.1%}")
-    print(f"Precision:             {metrics['precision']:.1%}")
-    print(f"Recall:                {metrics['recall']:.1%}")
-    print(f"F1 Score:              {metrics['f1']:.1%}")
-    
-    # Compare to baseline
-    print("\n" + "=" * 60)
-    print("📈 COMPARISON TO BASELINE")
-    print("=" * 60)
-    print(f"                      Baseline    VAE        Change")
-    print(f"                      --------    ----       ------")
-    print(f"False Positive Rate:    34.5%     {metrics['fp_rate']:.1%}      ", end="")
-    
-    baseline_fp_rate = 0.345
-    fp_change = (baseline_fp_rate - metrics['fp_rate']) / baseline_fp_rate * 100
-    print(f"↓ {fp_change:.0f}%")
-    
-    print(f"Precision:              65.5%     {metrics['precision']:.1%}      ", end="")
-    precision_change = (metrics['precision'] - 0.655) / 0.655 * 100
-    print(f"↑ {precision_change:.0f}%")
-    
-    print("\n" + "=" * 60)
-    print(f"🎯 SUMMARY: {fp_change:.0f}% reduction in false positives")
-    print("=" * 60)
+    evaluate()

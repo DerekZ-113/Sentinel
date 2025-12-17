@@ -1,5 +1,5 @@
 -- ==================================================================
--- SENTINEL - Useful Queries for Fleet Anomaly Detection
+-- SENTINEL - Useful Queries for Notification Triage Analysis
 -- ==================================================================
 
 -- 1. DATASET OVERVIEW
@@ -9,121 +9,169 @@ SELECT
     COUNT(DISTINCT vehicle_id) as num_vehicles,
     MIN(time) as start_time,
     MAX(time) as end_time,
-    COUNT(*) FILTER (WHERE is_anomaly = true) as anomaly_records,
-    COUNT(*) FILTER (WHERE is_anomaly = false) as normal_records
+    COUNT(*) FILTER (WHERE notification_type IS NOT NULL) as notification_records,
+    COUNT(*) FILTER (WHERE needs_intervention = true) as real_interventions,
+    COUNT(*) FILTER (WHERE notification_type IS NOT NULL AND needs_intervention = false) as false_positives
 FROM vehicle_metrics;
 
 
--- 2. ANOMALY BREAKDOWN BY TYPE
--- ----------------------------
+-- 2. NOTIFICATION TYPE BREAKDOWN
+-- ------------------------------
 SELECT 
-    anomaly_type,
-    COUNT(*) as count,
-    ROUND(AVG(speed)::numeric, 2) as avg_speed,
-    ROUND(AVG(expected_speed)::numeric, 2) as avg_expected
+    notification_type,
+    notification_subtype,
+    COUNT(*) as total,
+    COUNT(*) FILTER (WHERE needs_intervention = true) as real,
+    COUNT(*) FILTER (WHERE needs_intervention = false) as fp,
+    ROUND(100.0 * COUNT(*) FILTER (WHERE needs_intervention = false) / COUNT(*), 1) as fp_rate
 FROM vehicle_metrics 
-WHERE is_anomaly = true
-GROUP BY anomaly_type
-ORDER BY count DESC;
+WHERE notification_type IS NOT NULL
+GROUP BY notification_type, notification_subtype
+ORDER BY total DESC;
 
 
--- 3. TRAFFIC CONDITION DISTRIBUTION
--- ---------------------------------
+-- 3. SUMMARY BY MAIN NOTIFICATION TYPE
+-- ------------------------------------
 SELECT 
-    traffic_condition,
-    COUNT(*) as count,
-    ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER(), 2) as percentage,
-    ROUND(AVG(speed)::numeric, 2) as avg_speed
+    notification_type,
+    COUNT(*) as total,
+    COUNT(*) FILTER (WHERE needs_intervention = true) as real,
+    COUNT(*) FILTER (WHERE needs_intervention = false) as fp,
+    ROUND(100.0 * COUNT(*) FILTER (WHERE needs_intervention = false) / COUNT(*), 1) as fp_rate
 FROM vehicle_metrics
-GROUP BY traffic_condition
-ORDER BY count DESC;
+WHERE notification_type IS NOT NULL
+GROUP BY notification_type
+ORDER BY total DESC;
 
 
--- 4. HOURLY ANOMALY PATTERN
--- -------------------------
+-- 4. HOURLY NOTIFICATION PATTERN
+-- ------------------------------
 SELECT 
     EXTRACT(HOUR FROM time) as hour,
-    COUNT(*) FILTER (WHERE is_anomaly = true) as anomalies,
-    COUNT(*) as total,
-    ROUND(100.0 * COUNT(*) FILTER (WHERE is_anomaly = true) / COUNT(*), 2) as anomaly_rate
+    COUNT(*) FILTER (WHERE notification_type IS NOT NULL) as notifications,
+    COUNT(*) FILTER (WHERE needs_intervention = true) as real,
+    ROUND(100.0 * COUNT(*) FILTER (WHERE needs_intervention = true) / 
+          NULLIF(COUNT(*) FILTER (WHERE notification_type IS NOT NULL), 0), 1) as intervention_rate
 FROM vehicle_metrics
 GROUP BY EXTRACT(HOUR FROM time)
 ORDER BY hour;
 
 
--- 5. FIND LONG STUCK EVENTS
--- -------------------------
--- Vehicles stopped for 5+ minutes when expected to be moving
+-- 5. OBJECT QUERY ANALYSIS
+-- ------------------------
+-- The highest volume, highest FP notification
 SELECT 
-    vehicle_id,
-    time,
-    speed,
-    expected_speed,
-    is_anomaly,
-    anomaly_type
+    road_type,
+    traffic_condition,
+    ROUND(AVG(pedestrian_density)::numeric, 2) as avg_pedestrian_density,
+    COUNT(*) as count,
+    COUNT(*) FILTER (WHERE needs_intervention = true) as real,
+    ROUND(100.0 * COUNT(*) FILTER (WHERE needs_intervention = false) / COUNT(*), 1) as fp_rate
 FROM vehicle_metrics
-WHERE speed < 5 
-  AND expected_speed > 10
-ORDER BY time DESC
-LIMIT 100;
+WHERE notification_subtype = 'object_query'
+GROUP BY road_type, traffic_condition
+ORDER BY count DESC;
 
 
--- 6. SPEED RATIO ANALYSIS
--- -----------------------
--- Shows distribution of actual vs expected speed
+-- 6. EMERGENCY VEHICLE ALERT ANALYSIS
+-- -----------------------------------
 SELECT 
     CASE 
-        WHEN expected_speed < 5 THEN 'expected_stopped'
-        WHEN speed / NULLIF(expected_speed, 0) > 0.9 THEN 'on_target'
-        WHEN speed / NULLIF(expected_speed, 0) > 0.5 THEN 'slow'
-        WHEN speed / NULLIF(expected_speed, 0) > 0.1 THEN 'very_slow'
-        ELSE 'stopped'
-    END as speed_category,
+        WHEN ev_distance < 50 THEN 'very_close (<50m)'
+        WHEN ev_distance < 100 THEN 'close (50-100m)'
+        WHEN ev_distance < 200 THEN 'medium (100-200m)'
+        ELSE 'far (>200m)'
+    END as distance_category,
     COUNT(*) as count,
-    COUNT(*) FILTER (WHERE is_anomaly = true) as anomalies
+    COUNT(*) FILTER (WHERE needs_intervention = true) as real,
+    ROUND(100.0 * COUNT(*) FILTER (WHERE needs_intervention = false) / COUNT(*), 1) as fp_rate
 FROM vehicle_metrics
+WHERE notification_type = 'emergency_vehicle_alert'
 GROUP BY 1
 ORDER BY count DESC;
 
 
--- 7. CONSTRUCTION ZONE IMPACT
--- ---------------------------
-SELECT 
-    construction_zone,
-    ROUND(AVG(speed)::numeric, 2) as avg_speed,
-    ROUND(AVG(expected_speed)::numeric, 2) as avg_expected,
-    COUNT(*) FILTER (WHERE speed < 5) as stopped_count,
-    COUNT(*) as total
-FROM vehicle_metrics
-GROUP BY construction_zone
-ORDER BY avg_speed;
-
-
--- 8. SAMPLE DATA FOR ONE VEHICLE
+-- 7. STUCK NOTIFICATION ANALYSIS
 -- ------------------------------
 SELECT 
-    time,
-    speed,
-    expected_speed,
     traffic_condition,
     construction_zone,
-    is_anomaly,
-    anomaly_type
+    COUNT(*) as count,
+    COUNT(*) FILTER (WHERE needs_intervention = true) as real,
+    ROUND(100.0 * COUNT(*) FILTER (WHERE needs_intervention = false) / COUNT(*), 1) as fp_rate
 FROM vehicle_metrics
-WHERE vehicle_id = 'vehicle_000'
-ORDER BY time
+WHERE notification_type = 'stuck'
+GROUP BY traffic_condition, construction_zone
+ORDER BY count DESC;
+
+
+-- 8. DAILY NOTIFICATION VOLUME
+-- ----------------------------
+SELECT 
+    DATE(time) as date,
+    COUNT(*) FILTER (WHERE notification_type IS NOT NULL) as notifications,
+    COUNT(*) FILTER (WHERE needs_intervention = true) as real_interventions,
+    COUNT(*) FILTER (WHERE notification_type IS NOT NULL AND needs_intervention = false) as false_positives
+FROM vehicle_metrics
+GROUP BY DATE(time)
+ORDER BY date;
+
+
+-- 9. TRAFFIC CONDITION IMPACT
+-- ---------------------------
+SELECT 
+    traffic_condition,
+    COUNT(*) FILTER (WHERE notification_type IS NOT NULL) as notifications,
+    COUNT(*) FILTER (WHERE needs_intervention = true) as real,
+    ROUND(100.0 * COUNT(*) FILTER (WHERE needs_intervention = false) / 
+          NULLIF(COUNT(*) FILTER (WHERE notification_type IS NOT NULL), 0), 1) as fp_rate
+FROM vehicle_metrics
+GROUP BY traffic_condition
+ORDER BY notifications DESC;
+
+
+-- 10. SAMPLE NOTIFICATION SEQUENCE
+-- --------------------------------
+SELECT 
+    time,
+    vehicle_id,
+    speed,
+    expected_speed,
+    notification_type,
+    notification_subtype,
+    needs_intervention,
+    ev_distance,
+    pedestrian_density
+FROM vehicle_metrics
+WHERE notification_type IS NOT NULL
+ORDER BY time DESC
 LIMIT 50;
 
 
--- 9. CLEAR TABLE (FOR REGENERATION)
--- ---------------------------------
--- TRUNCATE TABLE vehicle_metrics;
+-- 11. OPERATOR WORKLOAD SIMULATION
+-- --------------------------------
+-- What operators would see per hour
+SELECT 
+    DATE(time) as date,
+    EXTRACT(HOUR FROM time) as hour,
+    COUNT(*) FILTER (WHERE notification_type IS NOT NULL) as total_notifications,
+    COUNT(*) FILTER (WHERE notification_type = 'verification_request') as verification_requests,
+    COUNT(*) FILTER (WHERE notification_type = 'stuck') as stuck,
+    COUNT(*) FILTER (WHERE notification_type = 'emergency_vehicle_alert') as ev_alerts
+FROM vehicle_metrics
+GROUP BY DATE(time), EXTRACT(HOUR FROM time)
+ORDER BY date, hour;
 
 
--- 10. CHECK INDEXES
+-- 12. CHECK INDEXES
 -- -----------------
 SELECT 
     indexname, 
     indexdef 
 FROM pg_indexes 
 WHERE tablename = 'vehicle_metrics';
+
+
+-- 13. CLEAR TABLE (FOR REGENERATION)
+-- ----------------------------------
+-- TRUNCATE TABLE vehicle_metrics;

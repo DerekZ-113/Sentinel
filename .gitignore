@@ -12,6 +12,8 @@ venv/
 *.npy
 *.pt
 *.pth
+xgboost_model.json
+*.joblib
 runs/
 
 # IDE

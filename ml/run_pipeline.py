@@ -4,8 +4,7 @@ Sentinel Pipeline Runner
 
 Runs the complete ML pipeline:
 1. Prepare data (feature engineering)
-2. Train VAE
-3. Evaluate results
+2. Train XGBoost classifier + evaluate
 
 Usage: python run_pipeline.py
 """
@@ -33,7 +32,7 @@ def run_step(name, script):
 
 def main():
     print("="*60)
-    print("SENTINEL ML PIPELINE")
+    print("SENTINEL ML PIPELINE (XGBoost)")
     print("="*60)
     
     total_start = time.time()
@@ -42,11 +41,8 @@ def main():
     # Step 1: Prepare data
     timings['prepare'] = run_step("Data Preparation", "prepare_data.py")
     
-    # Step 2: Train VAE
-    timings['train'] = run_step("VAE Training", "train_vae.py")
-    
-    # Step 3: Evaluate
-    timings['evaluate'] = run_step("Evaluation", "vae_alerter.py")
+    # Step 2: Train classifier + evaluate
+    timings['train'] = run_step("XGBoost Training & Evaluation", "train_classifier.py")
     
     # Summary
     total = time.time() - total_start
@@ -55,11 +51,10 @@ def main():
     print("PIPELINE COMPLETE")
     print(f"{'='*60}")
     print(f"\nTimings:")
-    print(f"  Data prep:   {timings['prepare']:>6.1f}s")
-    print(f"  Training:    {timings['train']:>6.1f}s")
-    print(f"  Evaluation:  {timings['evaluate']:>6.1f}s")
+    print(f"  Data prep:      {timings['prepare']:>6.1f}s")
+    print(f"  Train + Eval:   {timings['train']:>6.1f}s")
     print(f"  ─────────────────────")
-    print(f"  Total:       {total:>6.1f}s ({total/60:.1f} min)")
+    print(f"  Total:          {total:>6.1f}s ({total/60:.1f} min)")
     print()
 
 if __name__ == "__main__":

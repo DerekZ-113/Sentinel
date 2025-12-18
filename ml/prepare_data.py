@@ -214,11 +214,10 @@ def engineer_features(df):
 
 def prepare_training_data(df):
     """
-    Prepare data for VAE training.
+    Prepare data for ML training.
     
-    Strategy: Train on records where notifications did NOT need intervention.
-    The VAE learns "what does a false positive look like?"
-    High reconstruction error = likely needs real intervention.
+    Saves X_all (all notification features) and y_all (needs_intervention labels)
+    for supervised classification, plus X_train (FPs only) for VAE experiments.
     """
     
     # Features for the model

@@ -90,7 +90,7 @@ def evaluate():
     print("\n📥 Loading data and model...")
     
     X_all = np.load('X_all.npy')
-    y_all = np.load('y_all.npy')
+    y_all = np.load('y_all.npy', allow_pickle=True).astype(bool)
     notif_types = np.load('notif_types.npy', allow_pickle=True)
     
     model = load_model()
@@ -210,10 +210,10 @@ def evaluate():
     # OPERATOR IMPACT
     # ========================================
     print(f"\n{'=' * 70}")
-    print("OPERATOR IMPACT (per day, assuming 7-day dataset)")
+    print("OPERATOR IMPACT (per day)")
     print(f"{'=' * 70}")
     
-    days = 7
+    days = 1  # Adjust based on your dataset duration
     total_notifs_per_day = len(X_all) / days
     
     baseline_alerts_per_day = total_notifs_per_day  # All notifications

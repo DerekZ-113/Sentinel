@@ -2,7 +2,7 @@
 
 **Context-aware notification triage for autonomous vehicle fleets**
 
-A machine learning system that reduces operator alert fatigue by learning which notifications actually need intervention — trained on 18M+ telemetry records from a 500-vehicle fleet, achieving significant reductions in false positive rates across all notification types.
+A machine learning system that reduces operator alert fatigue by learning which notifications actually need intervention — trained on telemetry records from a 500-vehicle fleet simulation.
 
 ---
 
@@ -12,11 +12,11 @@ AV fleet operators are drowning in notifications:
 
 | Notification Type | What It Means | Reality |
 |-------------------|---------------|---------|
-| **Object Query** | "Is something blocking me?" | 90% of the time, someone just walked by |
-| **EV Alert** | "Emergency vehicle detected" | Usually on a different road or too far away |
-| **Stuck** | "I can't move" | Often just traffic or a red light |
+| **Object Query** | "Is something blocking me?" | ~83% are false positives (someone just walked by) |
+| **EV Alert** | "Emergency vehicle detected" | ~70% are false positives (EV too far away) |
+| **Stuck** | "I can't move" | ~61% are false positives (traffic or red light) |
 
-> *"95% of notifications don't need intervention"* — the problem we're solving.
+> *"Most notifications don't need intervention"* — the problem we're solving.
 
 When everything is an alert, nothing is an alert. Real issues get buried in noise.
 
@@ -36,26 +36,21 @@ Sentinel uses a **Variational Autoencoder (VAE)** to learn the patterns of false
 
 ## Results
 
-### Overall Performance
+*Results will be updated after training with interaction features.*
 
-| Metric | Baseline | VAE | Improvement |
-|--------|----------|-----|-------------|
-| False Positive Rate | ~70% | ~25% | ↓ 65% |
-| Precision | ~30% | ~75% | ↑ 150% |
-| Daily Alerts | ~15,000 | ~5,000 | ↓ 67% |
+### Baseline (No ML)
 
-### Per-Notification-Type Breakdown
-
-| Type | Baseline FP | VAE FP | Reduction |
-|------|-------------|--------|-----------|
-| verification_request/object_query | 90% | ~30% | ↓ 67% |
-| verification_request/traffic_signal_verify | 10% | ~5% | ↓ 50% |
-| verification_request/lane_mapping_verify | 30% | ~12% | ↓ 60% |
-| emergency_vehicle_alert | 70% | ~25% | ↓ 64% |
-| stuck | 65% | ~22% | ↓ 66% |
-| speed_anomaly | 50% | ~18% | ↓ 64% |
-| impact_l0 | 40% | ~15% | ↓ 63% |
-| passenger_assist | 0% | 0% | N/A |
+| Notification Type | Volume | False Positive Rate |
+|-------------------|--------|---------------------|
+| stuck | 1.7M | 61.0% |
+| verification_request/object_query | 800K | 82.9% |
+| speed_anomaly | 690K | 57.2% |
+| emergency_vehicle_alert | 187K | 70.2% |
+| verification_request/traffic_signal_verify | 158K | 9.7% |
+| verification_request/lane_mapping_verify | 109K | 31.2% |
+| passenger_assist | 88K | 0.0% |
+| impact_l0 | 57K | 47.2% |
+| **Overall** | **3.8M** | **60.8%** |
 
 ---
 
@@ -77,22 +72,22 @@ Sentinel uses a **Variational Autoencoder (VAE)** to learn the patterns of false
 ## Architecture
 
 ```
-Fleet Telemetry (18M+ records, 500 vehicles, 7 days)
+Fleet Telemetry (8M+ records, 500 vehicles)
          │
          ▼
 ┌─────────────────────────────────────────┐
-│  Feature Engineering (18 features)      │
+│  Feature Engineering (28 features)      │
 │  - Speed context (ratio, deviation)     │
 │  - Road context (type, traffic)         │
 │  - Notification context (type, subtype) │
-│  - Situational (EV distance, pedestrians)│
-│  - Time patterns (cyclical hour)        │
+│  - Situational (EV distance, pedestrians│
+│  - Interaction features (domain knowledge│
 └─────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────┐
 │  VAE (trained on false positives)       │
-│  18 → 128 → 64 → 16 → 64 → 128 → 18     │
+│  28 → 256 → 128 → 32 → 128 → 256 → 28   │
 │  + Dropout + BatchNorm                  │
 └─────────────────────────────────────────┘
          │
@@ -104,7 +99,9 @@ Fleet Telemetry (18M+ records, 500 vehicles, 7 days)
 
 ---
 
-## Features
+## Features (28 total)
+
+### Base Features (17)
 
 | Feature | Description |
 |---------|-------------|
@@ -125,6 +122,24 @@ Fleet Telemetry (18M+ records, 500 vehicles, 7 days)
 | `high_traffic` | derived: heavy traffic or construction |
 | `high_pedestrian` | derived: high pedestrian area |
 
+### Interaction Features (11) — Domain Knowledge Encoded
+
+| Feature | What It Captures | Expected Signal |
+|---------|------------------|-----------------|
+| `stuck_in_traffic` | Stuck + heavy traffic | Strong FP indicator |
+| `stuck_in_construction` | Stuck + construction zone | Strong FP indicator |
+| `stuck_clear_road` | Stuck + clear conditions | Strong REAL indicator |
+| `object_query_high_ped` | Object query + busy area | Strong FP indicator |
+| `object_query_low_ped` | Object query + empty area | Likely REAL indicator |
+| `object_query_moving` | Object query + vehicle moving | More likely REAL |
+| `ev_far_away` | EV alert + far distance (>200m) | Strong FP indicator |
+| `ev_close` | EV alert + close (<50m) | Strong REAL indicator |
+| `speed_anomaly_in_traffic` | Slow + heavy traffic | Strong FP indicator |
+| `speed_anomaly_clear` | Slow + clear road | Likely REAL indicator |
+| `impact_rough_road` | Impact + residential/downtown | FP indicator (speed bumps) |
+
+**Why interaction features?** The VAE treats features independently. It can learn "stuck notifications look like X" and "heavy traffic looks like Y" separately, but struggles to learn "stuck + heavy traffic = false positive." Interaction features encode this domain knowledge directly.
+
 ---
 
 ## Project Structure
@@ -136,7 +151,7 @@ sentinel/
 │   ├── baseline_alerter.py      # Baseline analysis
 │   └── useful_queries.sql       # SQL analysis queries
 ├── ml/
-│   ├── prepare_data.py          # Feature engineering
+│   ├── prepare_data.py          # Feature engineering (28 features)
 │   ├── vae_model.py             # VAE architecture
 │   ├── train_vae.py             # GPU training pipeline
 │   └── vae_alerter.py           # Evaluation & results
@@ -164,7 +179,7 @@ docker run -d --name timescaledb \
 # 3. Initialize database
 python setup_database.py
 
-# 4. Generate fleet data (~25-30 min for 18M records)
+# 4. Generate fleet data
 cd fleet_data
 python generate_fleet_data.py
 
@@ -199,24 +214,44 @@ tensorboard --logdir=runs
 
 ## Key Insights
 
-1. **Train on false positives**: The VAE learns "what does a notification that doesn't need help look like?" Real interventions are outliers.
+1. **Feature engineering > model complexity**: For tabular data, explicit interaction features often matter more than deeper networks. The model can't easily learn "stuck + traffic = FP" from independent features.
 
-2. **Context is everything**: 
+2. **Train on false positives**: The VAE learns "what does a notification that doesn't need help look like?" Real interventions are outliers with high reconstruction error.
+
+3. **Context is everything**: 
    - "Stuck" + traffic jam = false positive
    - "Stuck" + clear highway = real problem
    - "Object query" + downtown + rush hour = someone walked by
    - "Object query" + highway + 2 AM = something's actually there
 
-3. **Not all notifications are equal**: Object queries have 90% FP rate. Passenger assists have 0%. The model learns these differences.
+4. **Not all notifications are equal**: Object queries have 83% FP rate. Passenger assists have 0%. The model learns these differences.
 
 ---
 
 ## Dataset
 
-- **18M+ records** — 500 vehicles × 7 days × 5-second intervals
+- **8M+ records** — 500 vehicles × 1 day × 5-second intervals
 - **6 notification types** with subtypes
 - **Ground truth labels** — `needs_intervention` based on context
 - **Realistic patterns** — Rush hour traffic, construction zones, pedestrian activity
+
+---
+
+## Challenges & Learnings
+
+### Initial Results Were Weak
+
+First model achieved only 5% FP reduction with 1.06x separation ratio — essentially useless. The reconstruction errors for FPs and real interventions were nearly identical.
+
+### Root Cause
+
+The VAE was treating features independently. It learned "stuck notifications look like X" and "heavy traffic looks like Y" separately, but didn't learn that "stuck + heavy traffic = false positive."
+
+### Solution
+
+Added explicit interaction features that encode domain knowledge directly. Instead of hoping the model discovers these relationships, we tell it: `stuck_in_traffic = (notification_type == 'stuck') & (traffic >= heavy)`.
+
+This is a classic lesson in ML: **for tabular data, feature engineering often matters more than model architecture**.
 
 ---
 
@@ -225,4 +260,4 @@ tensorboard --logdir=runs
 Derek Zhang  
 MS Computer Science, Northeastern University
 
-*Built from real-world experience in autonomous vehicle operations at Zoox.*
+*Built from real-world experience in autonomous vehicle fleet operations.*

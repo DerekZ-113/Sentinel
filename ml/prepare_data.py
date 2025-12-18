@@ -1,8 +1,10 @@
 """
-Sentinel Data Preparation v2.0
+Sentinel Data Preparation v2.1
 
 Feature engineering for notification triage system.
 Transforms raw telemetry + notification data into ML-ready features.
+
+v2.1: Added interaction features for better FP/real separation
 """
 
 import pandas as pd
@@ -70,7 +72,7 @@ def engineer_features(df):
     df = df.copy()
     
     # ========================================
-    # SPEED FEATURES (same as before)
+    # SPEED FEATURES
     # ========================================
     
     # Speed ratio (actual / expected)
@@ -168,6 +170,40 @@ def engineer_features(df):
     # Is this a pedestrian-heavy area?
     df['high_pedestrian'] = (df['pedestrian_density'] > 0.5).astype(int)
     
+    # ========================================
+    # INTERACTION FEATURES (Key for separation!)
+    # ========================================
+    # These encode domain knowledge about what makes a FP vs real intervention
+    
+    # STUCK notifications
+    is_stuck = (df['notification_type'] == 'stuck')
+    df['stuck_in_traffic'] = (is_stuck & (df['traffic_encoded'] >= 2)).astype(int)
+    df['stuck_in_construction'] = (is_stuck & (df['construction_encoded'] >= 1)).astype(int)
+    df['stuck_clear_road'] = (is_stuck & 
+                              (df['traffic_encoded'] == 0) & 
+                              (df['construction_encoded'] == 0)).astype(int)
+    
+    # OBJECT QUERY notifications
+    is_object_query = (df['notification_subtype'] == 'object_query')
+    df['object_query_high_ped'] = (is_object_query & (df['pedestrian_density'] > 0.5)).astype(int)
+    df['object_query_low_ped'] = (is_object_query & (df['pedestrian_density'] <= 0.3)).astype(int)
+    df['object_query_moving'] = (is_object_query & (df['speed'] > 10)).astype(int)
+    
+    # EMERGENCY VEHICLE notifications
+    is_ev = (df['notification_type'] == 'emergency_vehicle_alert')
+    df['ev_far_away'] = (is_ev & (df['ev_distance_normalized'] > 0.4)).astype(int)  # >200m
+    df['ev_close'] = (is_ev & (df['ev_distance_normalized'] < 0.1)).astype(int)     # <50m
+    
+    # SPEED ANOMALY notifications
+    is_speed_anomaly = (df['notification_type'] == 'speed_anomaly')
+    df['speed_anomaly_in_traffic'] = (is_speed_anomaly & (df['traffic_encoded'] >= 2)).astype(int)
+    df['speed_anomaly_clear'] = (is_speed_anomaly & (df['traffic_encoded'] == 0)).astype(int)
+    
+    # IMPACT notifications
+    is_impact = (df['notification_type'] == 'impact_l0')
+    df['impact_rough_road'] = (is_impact & 
+                               (df['road_type'].isin(['residential', 'downtown']))).astype(int)
+    
     print(f"✅ Engineered {len(df.columns)} features")
     
     return df
@@ -215,6 +251,19 @@ def prepare_training_data(df):
         # Derived
         'high_traffic',
         'high_pedestrian',
+        
+        # Interaction features (domain knowledge encoded)
+        'stuck_in_traffic',
+        'stuck_in_construction',
+        'stuck_clear_road',
+        'object_query_high_ped',
+        'object_query_low_ped',
+        'object_query_moving',
+        'ev_far_away',
+        'ev_close',
+        'speed_anomaly_in_traffic',
+        'speed_anomaly_clear',
+        'impact_rough_road',
     ]
     
     # Filter to only notification records (we're triaging notifications)
@@ -256,7 +305,7 @@ def prepare_training_data(df):
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("SENTINEL DATA PREPARATION v2.0")
+    print("SENTINEL DATA PREPARATION v2.1")
     print("=" * 60)
     
     # Step 1: Load data

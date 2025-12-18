@@ -24,21 +24,21 @@ from vae_model import VAE, vae_loss
 
 class Config:
     # Data
-    input_dim = 18          # Number of features
+    input_dim = 28          # Number of features (auto-detected from data)
     
-    # Architecture
-    hidden_dims = [128, 64]
-    latent_dim = 16
+    # Architecture (sized for 28 features)
+    hidden_dims = [256, 128]
+    latent_dim = 32
     dropout = 0.2
     
     # Training
     batch_size = 2048
     learning_rate = 0.001
-    epochs = 200
+    epochs = 100
     beta = 1.0              # KL weight
     
     # Early stopping
-    patience = 15
+    patience = 50
     min_delta = 0.0001
     
     # Paths

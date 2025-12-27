@@ -1,6 +1,10 @@
 # Sentinel
 
-**Context-aware notification triage for autonomous vehicle fleets**
+![Python](https://img.shields.io/badge/Python-3.10+-blue)
+![License](https://img.shields.io/badge/License-MIT-green)
+![XGBoost](https://img.shields.io/badge/ML-XGBoost-orange)
+
+**Context-aware alert filtering for autonomous vehicle fleets**
 
 A machine learning system that reduces operator alert fatigue by learning which notifications actually need intervention. Achieved **64% reduction in false positives** and **2M fewer unnecessary alerts daily** on a 500-vehicle fleet simulation.
 
@@ -24,7 +28,7 @@ When everything is an alert, nothing is an alert. Real issues get buried in nois
 
 ## The Solution
 
-Sentinel uses an **XGBoost classifier** with domain-knowledge interaction features to predict which notifications actually need operator intervention.
+Sentinel uses an **XGBoost classifier** with interaction features built from operational experience to predict which notifications actually need operator intervention.
 
 **Key insight**: Context matters. A "stuck" notification during rush hour traffic is almost always a false positive. A "stuck" notification on a clear highway probably needs attention.
 
@@ -69,7 +73,7 @@ Sentinel uses an **XGBoost classifier** with domain-knowledge interaction featur
 
 ## Feature Importance
 
-The interaction features engineered from domain knowledge became the top predictors:
+The interaction features I built from operational patterns became the top predictors:
 
 | Rank | Feature | Importance | Type |
 |------|---------|------------|------|
@@ -84,7 +88,7 @@ The interaction features engineered from domain knowledge became the top predict
 | 9 | `notification_type_encoded` | 5.2% | Base |
 | 10 | `object_query_high_ped` | 3.9% | Interaction |
 
-**6 of the top 10 features are interaction features** — domain knowledge encoded directly into the model.
+**6 of the top 10 features are interaction features** — patterns I learned from working operations.
 
 ---
 
@@ -100,7 +104,7 @@ Fleet Telemetry (8M+ records, 500 vehicles)
 │  - Road context (type, traffic)         │
 │  - Notification context (type, subtype) │
 │  - Situational (EV distance, pedestrians│
-│  - Interaction features (domain knowledge│
+│  - Interaction features (operational)    │
 └─────────────────────────────────────────┘
          │
          ▼
@@ -142,7 +146,7 @@ Fleet Telemetry (8M+ records, 500 vehicles)
 | `high_traffic` | heavy traffic or construction |
 | `high_pedestrian` | high pedestrian area |
 
-### Interaction Features (11) — Domain Knowledge Encoded
+### Interaction Features (11) — Built from Operational Experience
 
 | Feature | What It Captures | Signal |
 |---------|------------------|--------|
@@ -214,7 +218,7 @@ sentinel/
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/yourusername/sentinel.git
+git clone https://github.com/DerekZ-113/Sentinel.git
 cd sentinel
 pip install -r requirements.txt
 
@@ -266,7 +270,8 @@ python run_pipeline.py
 
 ## Author
 
-Derek Zhang  
-MS Computer Science, Northeastern University
+**Derek Zhang**  
+MS Computer Science, Northeastern University  
+[LinkedIn](https://linkedin.com/in/derek-zhang-963169230) | [GitHub](https://github.com/DerekZ-113)
 
-*Built from real-world experience in autonomous vehicle fleet operations.*
+*Built from 3 years at Zoox working with autonomous vehicle fleet operations.*

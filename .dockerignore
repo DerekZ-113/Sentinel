@@ -1,0 +1,11 @@
+.git
+__pycache__
+*.pyc
+*.npy
+*.pt
+node_modules
+dashboard/node_modules
+dashboard/dist
+runs/
+.env
+*.log

@@ -5,6 +5,7 @@ Creates TimescaleDB schema for AV fleet notification triage system.
 Supports 500-vehicle fleet with 6 notification types.
 """
 
+import os
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
@@ -13,11 +14,11 @@ def setup_database():
     """Initialize the database schema for Sentinel"""
     
     conn_params = {
-        'host': 'localhost',
-        'port': 5432,
-        'database': 'postgres',
-        'user': 'postgres',
-        'password': 'password'
+        'host': os.environ.get('DB_HOST', 'localhost'),
+        'port': int(os.environ.get('DB_PORT', '5432')),
+        'database': os.environ.get('DB_NAME', 'postgres'),
+        'user': os.environ.get('DB_USER', 'postgres'),
+        'password': os.environ.get('DB_PASSWORD', 'password'),
     }
     
     try:

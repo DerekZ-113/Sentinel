@@ -1,12 +1,46 @@
 # Sentinel
 
-![Python](https://img.shields.io/badge/Python-3.10+-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
-![XGBoost](https://img.shields.io/badge/ML-XGBoost-orange)
+![Python](https://img.shields.io/badge/Python-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-009688) ![React](https://img.shields.io/badge/React-61DAFB) ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6) ![Docker](https://img.shields.io/badge/Docker_Compose-2496ED) ![XGBoost](https://img.shields.io/badge/XGBoost-orange) ![License](https://img.shields.io/badge/License-MIT-green)
 
 **Context-aware alert filtering for autonomous vehicle fleets**
 
-A machine learning system that reduces operator alert fatigue by learning which notifications actually need intervention. Achieved **64% reduction in false positives** and **2M fewer unnecessary alerts daily** on a 500-vehicle fleet simulation.
+Sentinel is a full-stack system that reduces operator alert fatigue by learning which fleet notifications actually need human intervention. It combines an XGBoost classifier trained on 28 engineered features with a FastAPI inference service and a React monitoring dashboard, all containerized with Docker Compose.
+
+The model achieves a **64% reduction in false positives** and eliminates roughly **2 million unnecessary alerts daily** on a 500-vehicle fleet simulation.
+
+---
+
+## Screenshots
+
+### Main Dashboard
+Overview cards, live alert feed, and per-type breakdown.
+
+![Sentinel Dashboard](Asset/sentinel_main_view.png)
+
+### Model Health Monitoring
+Confidence distribution, prediction split, accuracy tracking, and status indicators.
+
+![Model Health](Asset/sentinel_model_health.png)
+
+---
+
+## Quick Start
+
+The entire stack runs with one command. No manual database setup, no separate API launch. The entrypoint script handles schema creation, auto-seeding, and startup.
+
+```bash
+# Clone and start
+git clone https://github.com/DerekZ-113/Sentinel.git
+cd Sentinel
+docker-compose up --build
+
+# That's it. Open the dashboard:
+# http://localhost:3000
+```
+
+On first run, the API container waits for the database, sets up the schema, seeds 1,000 demo notifications through the model, and starts serving. The dashboard pulls from the API and renders immediately.
+
+**API docs (Swagger):** http://localhost:8000/docs
 
 ---
 
@@ -28,9 +62,9 @@ When everything is an alert, nothing is an alert. Real issues get buried in nois
 
 ## The Solution
 
-Sentinel uses an **XGBoost classifier** with interaction features built from operational experience to predict which notifications actually need operator intervention.
+Sentinel uses an XGBoost classifier with interaction features built from operational experience to predict which notifications actually need operator intervention.
 
-**Key insight**: Context matters. A "stuck" notification during rush hour traffic is almost always a false positive. A "stuck" notification on a clear highway probably needs attention.
+The key insight is that context matters. A "stuck" notification during rush hour traffic is almost always a false positive. A "stuck" notification on a clear highway probably needs attention. The model learns these contextual patterns through 11 hand-crafted interaction features that encode the operational knowledge behind when an alert is real versus noise.
 
 ---
 
@@ -40,8 +74,8 @@ Sentinel uses an **XGBoost classifier** with interaction features built from ope
 
 | Metric | Baseline | Sentinel | Improvement |
 |--------|----------|----------|-------------|
-| False Positive Rate | 60.8% | 21.7% | ↓ 64% |
-| Precision | 39.2% | 78.3% | ↑ 100% |
+| False Positive Rate | 60.8% | 21.7% | -64% |
+| Precision | 39.2% | 78.3% | +100% |
 | Recall | 100% | 86.6% | - |
 | F1 Score | - | 82.2% | - |
 | ROC-AUC | - | 0.946 | - |
@@ -50,13 +84,13 @@ Sentinel uses an **XGBoost classifier** with interaction features built from ope
 
 | Type | Baseline FP | Sentinel FP | Reduction |
 |------|-------------|-------------|-----------|
-| verification_request/object_query | 82.9% | 0.0% | ↓ 100% |
-| emergency_vehicle_alert | 70.0% | 0.0% | ↓ 100% |
-| speed_anomaly | 57.2% | 0.5% | ↓ 99% |
-| stuck | 61.1% | 38.0% | ↓ 38% |
-| impact_l0 | 47.5% | 42.7% | ↓ 10% |
-| verification_request/lane_mapping_verify | 30.7% | 28.9% | ↓ 6% |
-| verification_request/traffic_signal_verify | 9.6% | 9.4% | ↓ 2% |
+| verification_request/object_query | 82.9% | 0.0% | -100% |
+| emergency_vehicle_alert | 70.0% | 0.0% | -100% |
+| speed_anomaly | 57.2% | 0.5% | -99% |
+| stuck | 61.1% | 38.0% | -38% |
+| impact_l0 | 47.5% | 42.7% | -10% |
+| verification_request/lane_mapping_verify | 30.7% | 28.9% | -6% |
+| verification_request/traffic_signal_verify | 9.6% | 9.4% | -2% |
 | passenger_assist | 0.0% | 0.0% | N/A |
 
 ### Operator Impact
@@ -67,13 +101,68 @@ Sentinel uses an **XGBoost classifier** with interaction features built from ope
 | False alarms per day | 2.3M | 360K |
 | Workload | 100% | 43% |
 
-**🎯 2 million false alarms eliminated daily**
+**2 million false alarms eliminated daily.**
+
+---
+
+## Architecture
+
+```
+docker-compose up
+     |
+     v
++------------------------------------------------------------+
+|                    Docker Compose                          |
+|                                                            |
+|  +-------------+    +--------------+    +---------------+  |
+|  | React/TS    |--->|   FastAPI    |--->|  TimescaleDB  |  |
+|  | Dashboard   |    |   Backend    |    |               |  |
+|  | :3000       |    |   :8000      |    |  :5432        |  |
+|  | (nginx)     |    |              |    |               |  |
+|  +-------------+    +------+-------+    +---------------+  |
+|                            |                               |
+|                     +------+-------+                       |
+|                     |   XGBoost    |                       |
+|                     |   Model      |                       |
+|                     |  (loaded)    |                       |
+|                     +--------------+                       |
++------------------------------------------------------------+
+```
+
+The nginx layer in the dashboard container proxies `/api/*` requests to FastAPI, so the frontend and backend share the same origin in production. During development, CORS is configured for `localhost:5173` (Vite dev server).
+
+---
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/predict` | Send a notification payload, get back a prediction with confidence score |
+| GET | `/api/alerts` | Recent predictions with optional type filter and pagination |
+| GET | `/api/stats` | Aggregate stats over a time window (total, flagged, suppressed, FP rate) |
+| GET | `/api/stats/{type}` | Per-notification-type breakdown |
+| GET | `/api/stats/model-health` | Model health metrics: accuracy, confidence distribution, prediction split |
+| GET | `/health` | Service health check (model loaded, DB connected, uptime) |
+
+All endpoints return JSON. Full schema documentation is available at `/docs` when the API is running.
+
+---
+
+## Dashboard
+
+The React dashboard has five panels:
+
+- **Overview Cards** - Total alerts, flagged count, suppressed count, and model FP rate at a glance.
+- **Alert Feed** - Scrollable table of recent notifications showing vehicle ID, type, model prediction, confidence score, and ground truth when available.
+- **Type Breakdown** - Horizontal bar chart comparing flagged vs suppressed counts for each notification type.
+- **Simulate** - Interactive form where you can input notification parameters and get a real-time prediction from the API. Useful for testing edge cases.
+- **Model Health** - Confidence distribution (high/medium/low buckets), prediction split (flagged vs suppressed), accuracy, and a status indicator (healthy/warning/degraded).
 
 ---
 
 ## Feature Importance
 
-The interaction features I built from operational patterns became the top predictors:
+The interaction features built from operational patterns became the top predictors:
 
 | Rank | Feature | Importance | Type |
 |------|---------|------------|------|
@@ -88,38 +177,7 @@ The interaction features I built from operational patterns became the top predic
 | 9 | `notification_type_encoded` | 5.2% | Base |
 | 10 | `object_query_high_ped` | 3.9% | Interaction |
 
-**6 of the top 10 features are interaction features** — patterns I learned from working operations.
-
----
-
-## Architecture
-
-```
-Fleet Telemetry (8M+ records, 500 vehicles)
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│  Feature Engineering (28 features)      │
-│  - Speed context (ratio, deviation)     │
-│  - Road context (type, traffic)         │
-│  - Notification context (type, subtype) │
-│  - Situational (EV distance, pedestrians│
-│  - Interaction features (operational)    │
-└─────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────┐
-│  XGBoost Classifier                     │
-│  - 500 trees, max_depth=6               │
-│  - Class-balanced weighting             │
-│  - PR-AUC optimized                     │
-└─────────────────────────────────────────┘
-         │
-         ▼
-   P(needs_intervention)
-         │
-    >0.5 = Flag for operator
-```
+6 of the top 10 features are interaction features - patterns I learned from working operations.
 
 ---
 
@@ -146,7 +204,7 @@ Fleet Telemetry (8M+ records, 500 vehicles)
 | `high_traffic` | heavy traffic or construction |
 | `high_pedestrian` | high pedestrian area |
 
-### Interaction Features (11) — Built from Operational Experience
+### Interaction Features (11)
 
 | Feature | What It Captures | Signal |
 |---------|------------------|--------|
@@ -166,29 +224,25 @@ Fleet Telemetry (8M+ records, 500 vehicles)
 
 ## Development Journey
 
-### Attempt 1: VAE Anomaly Detection
+### Phase 1: ML Pipeline
 
-**Hypothesis**: Train a Variational Autoencoder on false positives only. Real interventions should have high reconstruction error (they look "different" from FPs).
+**Attempt 1: VAE Anomaly Detection.**
+Trained a Variational Autoencoder on false positives only, expecting real interventions to have high reconstruction error. Result: 1.05x separation ratio. The model couldn't distinguish FPs from real interventions because the VAE learns global feature distributions and missed the contextual interactions.
 
-**Result**: 1.05x separation ratio — model couldn't distinguish FPs from real interventions.
+**Attempt 2: VAE + Interaction Features.**
+Added the 11 interaction features to help the VAE see the patterns. Still 1.05x separation. The interaction features got diluted across all notification types in the global distribution.
 
-**Why it failed**: VAE learns global feature distributions. It learned "stuck notifications look like X" and "heavy traffic looks like Y" separately, but couldn't learn "stuck + heavy traffic = FP."
+**Attempt 3: XGBoost Classifier.**
+Supervised classification with interaction features. 64% FP reduction, 0.946 ROC-AUC. The interaction features became top predictors. For tabular data with categorical features, feature engineering often matters more than model architecture.
 
-### Attempt 2: VAE + Interaction Features
+### Phase 2: Production System
 
-**Hypothesis**: Add explicit interaction features to help the VAE see the patterns.
-
-**Result**: Still 1.05x separation. The interaction features got diluted across all notification types in the global distribution.
-
-### Attempt 3: XGBoost Classifier
-
-**Hypothesis**: Supervised classification with interaction features will directly learn the decision boundary.
-
-**Result**: 64% FP reduction, 0.946 ROC-AUC. Interaction features became top predictors.
-
-### Key Learning
-
-**For tabular data with categorical features, feature engineering often matters more than model architecture.** The same interaction features that failed in a VAE became dominant predictors in a tree-based classifier.
+Built the inference and monitoring layer on top of the trained model:
+- FastAPI backend serving real-time predictions with Pydantic validation and connection pooling
+- React/TypeScript dashboard with five monitoring panels and interactive simulation
+- Model health tracking with confidence distribution, accuracy monitoring, and status indicators
+- Docker Compose orchestration with automatic schema setup and demo seeding
+- nginx reverse proxy for unified frontend/API routing
 
 ---
 
@@ -196,60 +250,60 @@ Fleet Telemetry (8M+ records, 500 vehicles)
 
 ```
 sentinel/
+├── api/
+│   ├── main.py                  # FastAPI app, lifespan, health endpoint
+│   ├── models.py                # Pydantic request/response schemas
+│   ├── routes/
+│   │   ├── predict.py           # POST /api/predict
+│   │   ├── alerts.py            # GET /api/alerts
+│   │   └── stats.py             # GET /api/stats, /stats/model-health
+│   └── services/
+│       ├── model_service.py     # XGBoost loading, feature engineering
+│       └── db_service.py        # TimescaleDB queries, connection pool
+├── dashboard/
+│   └── src/
+│       ├── App.tsx              # Layout with sidebar navigation
+│       ├── components/
+│       │   ├── AlertFeed.tsx    # Recent alerts table
+│       │   ├── ModelHealth.tsx  # Model monitoring panel
+│       │   ├── OverviewCards.tsx # Summary stat cards
+│       │   ├── SimulatePanel.tsx # Interactive prediction form
+│       │   └── TypeBreakdown.tsx # Per-type bar chart
+│       └── services/api.ts      # API client with TypeScript interfaces
 ├── fleet_data/
-│   ├── generate_fleet_data.py   # 500-vehicle simulation
-│   ├── baseline_alerter.py      # Baseline analysis
+│   ├── generate_fleet_data.py   # 500-vehicle fleet simulation
+│   ├── baseline_alerter.py      # Baseline false positive analysis
 │   └── useful_queries.sql       # SQL analysis queries
 ├── ml/
 │   ├── prepare_data.py          # Feature engineering (28 features)
-│   ├── train_classifier.py      # XGBoost training + evaluation
-│   ├── run_pipeline.py          # End-to-end pipeline
+│   ├── train_classifier.py      # XGBoost training and evaluation
+│   ├── run_pipeline.py          # End-to-end ML pipeline
+│   ├── xgboost_model.json       # Trained model (committed)
+│   ├── xgboost_config.joblib    # Feature columns + threshold
 │   ├── vae_model.py             # VAE architecture (historical)
 │   ├── train_vae.py             # VAE training (historical)
 │   └── vae_alerter.py           # VAE evaluation (historical)
-├── setup_database.py            # TimescaleDB schema
-├── requirements.txt
-└── README.md
-```
-
----
-
-## Quick Start
-
-```bash
-# 1. Clone and install
-git clone https://github.com/DerekZ-113/Sentinel.git
-cd sentinel
-pip install -r requirements.txt
-
-# 2. Start TimescaleDB
-docker run -d --name timescaledb \
-  -p 5432:5432 \
-  -e POSTGRES_PASSWORD=password \
-  timescale/timescaledb:latest-pg14
-
-# 3. Initialize database
-python setup_database.py
-
-# 4. Generate fleet data
-cd fleet_data
-python generate_fleet_data.py
-
-# 5. Run ML pipeline
-cd ../ml
-python run_pipeline.py
-
-# Output: XGBoost model + evaluation results
+├── scripts/
+│   └── seed_demo.py             # Generate and seed 1,000 demo predictions
+├── docker-compose.yml           # Full stack: DB + API + Dashboard
+├── Dockerfile.api               # Python 3.11 with model files
+├── Dockerfile.dashboard         # Multi-stage: node build, nginx serve
+├── nginx.conf                   # Proxy /api/ to FastAPI, SPA fallback
+├── entrypoint.sh                # DB wait, schema setup, auto-seed, start
+├── setup_database.py            # TimescaleDB schema and hypertable
+└── requirements.txt
 ```
 
 ---
 
 ## Tech Stack
 
-- **Simulation**: Python fleet simulator with realistic traffic patterns
-- **Database**: TimescaleDB (time-series optimized PostgreSQL)
-- **ML**: XGBoost, scikit-learn
-- **Historical**: PyTorch VAE (documented for learning journey)
+- **Backend:** FastAPI, Pydantic, psycopg2 connection pooling
+- **Frontend:** React 19, TypeScript, Recharts, Tailwind CSS
+- **ML:** XGBoost, scikit-learn, NumPy
+- **Database:** TimescaleDB (time-series optimized PostgreSQL)
+- **Infrastructure:** Docker Compose, nginx reverse proxy, multi-stage builds
+- **Historical:** PyTorch VAE (kept in repo for the development journey)
 
 ---
 

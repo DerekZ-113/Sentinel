@@ -1,6 +1,6 @@
 # Sentinel
 
-![Python](https://img.shields.io/badge/Python-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-009688) ![React](https://img.shields.io/badge/React-61DAFB) ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6) ![Docker](https://img.shields.io/badge/Docker_Compose-2496ED) ![XGBoost](https://img.shields.io/badge/XGBoost-orange) ![License](https://img.shields.io/badge/License-MIT-green)
+![Python](https://img.shields.io/badge/Python-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-009688) ![React](https://img.shields.io/badge/React-61DAFB) ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6) ![Docker](https://img.shields.io/badge/Docker_Compose-2496ED) ![XGBoost](https://img.shields.io/badge/XGBoost-orange) 
 
 **Context-aware alert filtering for autonomous vehicle fleets**
 

@@ -67,10 +67,12 @@ def run_simulation(num_vehicles=50, hours=12):
                 })
 
         sim_time += timedelta(seconds=1)
-        if len(notifications) >= TARGET_NOTIFICATIONS * 1.5:
-            break
 
-    return notifications[:TARGET_NOTIFICATIONS]
+    # Sample randomly to spread data across the full time window
+    if len(notifications) > TARGET_NOTIFICATIONS:
+        notifications = random.sample(notifications, TARGET_NOTIFICATIONS)
+
+    return notifications
 
 
 def predict_all(notifications, model_service):
@@ -242,7 +244,7 @@ def compute_fp_over_time(alerts):
             accuracy = None
 
         buckets.append({
-            'time': start.isoformat() + 'Z',
+            'time': start.strftime('%Y-%m-%dT%H:%M:%SZ'),
             'total': total,
             'flagged': flagged,
             'suppressed': suppressed,

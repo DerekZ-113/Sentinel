@@ -1,9 +1,23 @@
 /**
  * Sentinel API Service
  * All backend calls go through here.
+ *
+ * When VITE_DEMO_MODE=true, serves pre-generated data from bundled JSON files
+ * instead of hitting the API. The full-stack API mode is completely unaffected.
  */
 
+import demoAlerts from "../data/alerts.json";
+import demoStats from "../data/stats.json";
+import demoModelHealth from "../data/model-health.json";
+import demoHealth from "../data/health.json";
+import { demoPredict } from "./demoPredict";
+
 const API_BASE = "/api";
+const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
+
+// ============================================================================
+// INTERFACES
+// ============================================================================
 
 export interface PredictionResponse {
   vehicle_id: string;
@@ -95,11 +109,13 @@ export interface ModelHealthResponse {
 // ============================================================================
 
 export async function fetchHealth(): Promise<HealthResponse> {
+  if (DEMO_MODE) return Promise.resolve(demoHealth as HealthResponse);
   const res = await fetch("/health");
   return res.json();
 }
 
 export async function fetchStats(hours = 24): Promise<StatsResponse> {
+  if (DEMO_MODE) return Promise.resolve(demoStats as StatsResponse);
   const res = await fetch(`${API_BASE}/stats?hours=${hours}`);
   return res.json();
 }
@@ -109,6 +125,16 @@ export async function fetchAlerts(
   offset = 0,
   notificationType?: string
 ): Promise<AlertsResponse> {
+  if (DEMO_MODE) {
+    let alerts = (demoAlerts as AlertsResponse).alerts;
+    if (notificationType) {
+      alerts = alerts.filter((a) => a.notification_type === notificationType);
+    }
+    // Already sorted by time desc in the JSON
+    const total = alerts.length;
+    const paged = alerts.slice(offset, offset + limit);
+    return Promise.resolve({ alerts: paged, total, limit, offset });
+  }
   let url = `${API_BASE}/alerts?limit=${limit}&offset=${offset}`;
   if (notificationType) {
     url += `&notification_type=${notificationType}`;
@@ -117,7 +143,11 @@ export async function fetchAlerts(
   return res.json();
 }
 
-export async function fetchModelHealth(hours = 24): Promise<ModelHealthResponse> {
+export async function fetchModelHealth(
+  hours = 24
+): Promise<ModelHealthResponse> {
+  if (DEMO_MODE)
+    return Promise.resolve(demoModelHealth as ModelHealthResponse);
   const res = await fetch(`${API_BASE}/stats/model-health?hours=${hours}`);
   return res.json();
 }
@@ -125,9 +155,17 @@ export async function fetchModelHealth(hours = 24): Promise<ModelHealthResponse>
 export async function postPredict(
   payload: NotificationPayload
 ): Promise<PredictionResponse> {
+  if (DEMO_MODE) return Promise.resolve(demoPredict(payload));
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  const apiKey = import.meta.env.VITE_API_KEY;
+  if (apiKey) {
+    headers["X-API-Key"] = apiKey;
+  }
   const res = await fetch(`${API_BASE}/predict`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(payload),
   });
   return res.json();

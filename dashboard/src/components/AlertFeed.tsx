@@ -6,14 +6,40 @@ export default function AlertFeed() {
   const [alerts, setAlerts] = useState<AlertRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadAlerts = () => {
+    setLoading(true);
+    setError(null);
+    fetchAlerts(20)
+      .then((data) => {
+        setAlerts(data.alerts);
+        setTotal(data.total);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.message);
+        setLoading(false);
+      });
+  };
 
   useEffect(() => {
-    fetchAlerts(20).then((data) => {
-      setAlerts(data.alerts);
-      setTotal(data.total);
-      setLoading(false);
-    });
+    loadAlerts();
   }, []);
+
+  if (error) {
+    return (
+      <div className="bg-red-900/20 border border-red-800/50 rounded-xl p-6 h-80 flex flex-col items-center justify-center gap-3">
+        <p className="text-red-400 text-sm">{error}</p>
+        <button
+          onClick={loadAlerts}
+          className="text-xs text-red-300 hover:text-white border border-red-700 px-3 py-1 rounded-lg transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -32,8 +58,8 @@ export default function AlertFeed() {
         </span>
       </div>
 
-      <div className="overflow-auto flex-1">
-        <table className="w-full text-sm">
+      <div className="overflow-auto flex-1 overflow-x-auto">
+        <table className="w-full text-sm min-w-[500px]">
           <thead>
             <tr className="text-gray-400 text-xs uppercase border-b border-gray-700/50">
               <th className="text-left py-2 pr-3">Vehicle</th>

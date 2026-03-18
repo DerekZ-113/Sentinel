@@ -6,6 +6,7 @@ import AlertFeed from "./components/AlertFeed";
 import TypeBreakdown from "./components/TypeBreakdown";
 import SimulatePanel from "./components/SimulatePanel";
 import ModelHealth from "./components/ModelHealth";
+import DemoBanner from "./components/DemoBanner";
 
 const NAV_ITEMS = [
   { id: "overview", label: "Overview" },
@@ -20,6 +21,7 @@ function App() {
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState("overview");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     Promise.all([fetchHealth(), fetchStats()])
@@ -52,6 +54,7 @@ function App() {
 
   function scrollTo(id: string) {
     setActiveSection(id);
+    setSidebarOpen(false);
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
   }
 
@@ -73,8 +76,36 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex">
+      {/* Mobile header */}
+      <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-gray-900/95 border-b border-gray-800 flex items-center px-4 z-20 backdrop-blur-sm">
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="text-gray-400 hover:text-white text-xl"
+          aria-label="Open menu"
+        >
+          &#9776;
+        </button>
+        <div className="ml-3 flex items-center gap-2">
+          <div className="h-6 w-6 rounded bg-blue-600 flex items-center justify-center text-[10px] font-bold">
+            S
+          </div>
+          <span className="font-bold text-sm">Sentinel</span>
+        </div>
+      </div>
+
+      {/* Mobile backdrop */}
+      {sidebarOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/50 z-30"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="fixed top-0 left-0 h-screen w-52 bg-gray-900/80 border-r border-gray-800 flex flex-col z-10">
+      <aside
+        className={`fixed top-0 left-0 h-screen w-52 bg-gray-900/80 border-r border-gray-800 flex-col z-40
+          ${sidebarOpen ? "flex" : "hidden"} md:flex`}
+      >
         {/* Logo */}
         <div className="px-4 py-5 border-b border-gray-800">
           <div className="flex items-center gap-2.5">
@@ -121,7 +152,9 @@ function App() {
       </aside>
 
       {/* Main content */}
-      <main className="ml-52 flex-1 px-8 py-6 space-y-6 max-w-[1200px]">
+      <main className="md:ml-52 ml-0 flex-1 px-4 md:px-8 py-6 pt-20 md:pt-6 space-y-6 max-w-[1200px]">
+        <DemoBanner />
+
         <section id="overview">
           <OverviewCards stats={stats} />
         </section>

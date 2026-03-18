@@ -1,0 +1,39 @@
+{
+  "time_window_hours": 24,
+  "total_alerts": 1000,
+  "total_flagged": 111,
+  "total_suppressed": 889,
+  "overall_fp_rate": 0.0,
+  "by_type": [
+    {
+      "notification_type": "verification_request",
+      "total": 448,
+      "flagged": 100,
+      "suppressed": 348
+    },
+    {
+      "notification_type": "stuck",
+      "total": 256,
+      "flagged": 0,
+      "suppressed": 256
+    },
+    {
+      "notification_type": "speed_anomaly",
+      "total": 172,
+      "flagged": 0,
+      "suppressed": 172
+    },
+    {
+      "notification_type": "emergency_vehicle_alert",
+      "total": 112,
+      "flagged": 0,
+      "suppressed": 112
+    },
+    {
+      "notification_type": "impact_l0",
+      "total": 12,
+      "flagged": 11,
+      "suppressed": 1
+    }
+  ]
+}

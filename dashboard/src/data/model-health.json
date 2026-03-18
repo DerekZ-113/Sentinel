@@ -1,0 +1,24 @@
+{
+  "status": "healthy",
+  "total_predictions": 1000,
+  "pct_flagged": 11.1,
+  "pct_suppressed": 88.9,
+  "avg_confidence": 0.9212,
+  "accuracy": 0.759,
+  "confidence_buckets": {
+    "high": 756,
+    "medium": 97,
+    "low": 147
+  },
+  "flagged_by_type": {
+    "verification_request": 100,
+    "impact_l0": 11
+  },
+  "suppressed_by_type": {
+    "verification_request": 348,
+    "stuck": 256,
+    "speed_anomaly": 172,
+    "emergency_vehicle_alert": 112,
+    "impact_l0": 1
+  }
+}

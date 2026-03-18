@@ -1,0 +1,8 @@
+{
+  "status": "healthy",
+  "model_loaded": true,
+  "db_connected": true,
+  "model_features": 28,
+  "model_threshold": 0.5,
+  "uptime_seconds": 86400.0
+}

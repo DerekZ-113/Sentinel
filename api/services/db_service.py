@@ -6,18 +6,23 @@ Uses psycopg2 with connection pooling.
 """
 
 import os
+import logging
 import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 import json
+
+
+logger = logging.getLogger("sentinel.db")
 
 
 class DatabaseService:
     """Manages DB connections and queries for Sentinel API."""
 
     def __init__(self, host=None, port=None, database=None,
-                 user=None, password=None, min_conn=2, max_conn=10):
+                 user=None, password=None, min_conn=2, max_conn=10) -> None:
         host = host or os.environ.get('DB_HOST', 'localhost')
         port = port or int(os.environ.get('DB_PORT', '5432'))
         database = database or os.environ.get('DB_NAME', 'postgres')
@@ -29,15 +34,15 @@ class DatabaseService:
             user=user, password=password
         )
         self._ensure_predictions_table()
-        print("✅ Database service initialized")
+        logger.info("Database service initialized")
 
     def _get_conn(self):
         return self.connection_pool.getconn()
 
-    def _put_conn(self, conn):
+    def _put_conn(self, conn) -> None:
         self.connection_pool.putconn(conn)
 
-    def _ensure_predictions_table(self):
+    def _ensure_predictions_table(self) -> None:
         """Create predictions table if it doesn't exist."""
         conn = self._get_conn()
         try:
@@ -130,7 +135,7 @@ class DatabaseService:
     # ========================================================================
 
     def get_recent_alerts(self, limit: int = 50, offset: int = 0,
-                          notification_type: str = None) -> dict:
+                          notification_type: Optional[str] = None) -> dict:
         """Get recent predictions with optional type filter."""
         conn = self._get_conn()
         try:
@@ -399,7 +404,7 @@ class DatabaseService:
         finally:
             self._put_conn(conn)
 
-    def close(self):
+    def close(self) -> None:
         """Close all connections."""
         if self.connection_pool:
             self.connection_pool.closeall()

@@ -6,9 +6,12 @@ set -e
 
 DB_HOST=${DB_HOST:-localhost}
 DB_PORT=${DB_PORT:-5432}
+DB_NAME=${DB_NAME:-postgres}
+DB_USER=${DB_USER:-postgres}
+DB_PASSWORD=${DB_PASSWORD:-password}
 
 echo "⏳ Waiting for database at $DB_HOST:$DB_PORT..."
-until python -c "import psycopg2; psycopg2.connect(host='$DB_HOST', port=$DB_PORT, database='postgres', user='postgres', password='password')" 2>/dev/null; do
+until python -c "import psycopg2; psycopg2.connect(host='$DB_HOST', port=$DB_PORT, database='$DB_NAME', user='$DB_USER', password='$DB_PASSWORD')" 2>/dev/null; do
     sleep 1
 done
 echo "✅ Database ready"
@@ -31,7 +34,7 @@ done
 # Seed if database is empty
 PRED_COUNT=$(python -c "
 import psycopg2
-conn = psycopg2.connect(host='$DB_HOST', port=$DB_PORT, database='postgres', user='postgres', password='password')
+conn = psycopg2.connect(host='$DB_HOST', port=$DB_PORT, database='$DB_NAME', user='$DB_USER', password='$DB_PASSWORD')
 cur = conn.cursor()
 cur.execute('SELECT COUNT(*) FROM predictions')
 print(cur.fetchone()[0])

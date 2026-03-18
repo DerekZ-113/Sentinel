@@ -232,6 +232,8 @@ Trained a Variational Autoencoder on false positives only, expecting real interv
 **Attempt 2: VAE + Interaction Features.**
 Added the 11 interaction features to help the VAE see the patterns. Still 1.05x separation. The interaction features got diluted across all notification types in the global distribution.
 
+*The VAE code has been removed from the repository and the PyTorch dependency dropped. The experiments are documented here for the learning value.*
+
 **Attempt 3: XGBoost Classifier.**
 Supervised classification with interaction features. 64% FP reduction, 0.946 ROC-AUC. The interaction features became top predictors. For tabular data with categorical features, feature engineering often matters more than model architecture.
 
@@ -253,6 +255,8 @@ sentinel/
 ├── api/
 │   ├── main.py                  # FastAPI app, lifespan, health endpoint
 │   ├── models.py                # Pydantic request/response schemas
+│   ├── auth.py                  # API key authentication
+│   ├── logging_config.py        # Structured logging setup
 │   ├── routes/
 │   │   ├── predict.py           # POST /api/predict
 │   │   ├── alerts.py            # GET /api/alerts
@@ -275,14 +279,12 @@ sentinel/
 │   ├── baseline_alerter.py      # Baseline false positive analysis
 │   └── useful_queries.sql       # SQL analysis queries
 ├── ml/
+│   ├── constants.py             # Shared encoding maps (single source of truth)
 │   ├── prepare_data.py          # Feature engineering (28 features)
 │   ├── train_classifier.py      # XGBoost training and evaluation
 │   ├── run_pipeline.py          # End-to-end ML pipeline
 │   ├── xgboost_model.json       # Trained model (committed)
-│   ├── xgboost_config.joblib    # Feature columns + threshold
-│   ├── vae_model.py             # VAE architecture (historical)
-│   ├── train_vae.py             # VAE training (historical)
-│   └── vae_alerter.py           # VAE evaluation (historical)
+│   └── xgboost_config.joblib    # Feature columns + threshold
 ├── scripts/
 │   └── seed_demo.py             # Generate and seed 1,000 demo predictions
 ├── docker-compose.yml           # Full stack: DB + API + Dashboard
@@ -290,6 +292,12 @@ sentinel/
 ├── Dockerfile.dashboard         # Multi-stage: node build, nginx serve
 ├── nginx.conf                   # Proxy /api/ to FastAPI, SPA fallback
 ├── entrypoint.sh                # DB wait, schema setup, auto-seed, start
+├── tests/
+│   ├── unit/                    # Unit tests (models, services, features)
+│   ├── integration/             # API endpoint tests
+│   └── ml/                      # ML pipeline and parity tests
+├── .github/workflows/ci.yml    # GitHub Actions CI pipeline
+├── .env.example                 # Environment variable template
 ├── setup_database.py            # TimescaleDB schema and hypertable
 └── requirements.txt
 ```
@@ -303,7 +311,7 @@ sentinel/
 - **ML:** XGBoost, scikit-learn, NumPy
 - **Database:** TimescaleDB (time-series optimized PostgreSQL)
 - **Infrastructure:** Docker Compose, nginx reverse proxy, multi-stage builds
-- **Historical:** PyTorch VAE (kept in repo for the development journey)
+- **Testing:** pytest (240+ tests), Vitest (42+ tests), GitHub Actions CI
 
 ---
 

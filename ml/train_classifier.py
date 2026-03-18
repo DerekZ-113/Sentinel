@@ -24,49 +24,7 @@ import time
 # CONFIGURATION
 # ============================================================================
 
-FEATURE_COLUMNS = [
-    # Speed context
-    'speed_ratio',
-    'speed_deviation', 
-    'is_stopped',
-    'expected_stopped',
-    
-    # Road context
-    'road_type_encoded',
-    'traffic_encoded',
-    'construction_encoded',
-    
-    # Notification info
-    'notification_type_encoded',
-    'notification_subtype_encoded',
-    
-    # Situational context
-    'ev_distance_normalized',
-    'pedestrian_density',
-    'object_in_path',
-    'time_since_stop_normalized',
-    
-    # Time patterns
-    'hour_sin',
-    'hour_cos',
-    
-    # Derived
-    'high_traffic',
-    'high_pedestrian',
-    
-    # Interaction features (domain knowledge)
-    'stuck_in_traffic',
-    'stuck_in_construction',
-    'stuck_clear_road',
-    'object_query_high_ped',
-    'object_query_low_ped',
-    'object_query_moving',
-    'ev_far_away',
-    'ev_close',
-    'speed_anomaly_in_traffic',
-    'speed_anomaly_clear',
-    'impact_rough_road',
-]
+from ml.constants import FEATURE_COLUMNS
 
 
 # ============================================================================

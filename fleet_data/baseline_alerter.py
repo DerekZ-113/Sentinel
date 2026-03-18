@@ -12,12 +12,13 @@ import psycopg2
 
 def connect_to_database():
     """Connect to TimescaleDB"""
+    import os
     conn = psycopg2.connect(
-        host='localhost',
-        port=5432,
-        database='postgres',
-        user='postgres',
-        password='password'
+        host=os.environ.get('DB_HOST', 'localhost'),
+        port=int(os.environ.get('DB_PORT', '5432')),
+        database=os.environ.get('DB_NAME', 'postgres'),
+        user=os.environ.get('DB_USER', 'postgres'),
+        password=os.environ.get('DB_PASSWORD', 'password'),
     )
     return conn
 

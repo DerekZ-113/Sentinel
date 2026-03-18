@@ -1,0 +1,54 @@
+# Sentinel — Developer Guide
+
+## Commands
+
+```bash
+# Full stack (Docker)
+docker-compose up --build          # Dashboard :3000, API :8000, DB :5432
+
+# Local dev
+uvicorn api.main:app --reload --port 8000
+cd dashboard && npm run dev        # Vite dev server on :5173
+
+# Tests
+pytest tests/ -v                   # 240 Python tests
+cd dashboard && npm test           # 42 Vitest tests
+cd dashboard && npm run lint       # ESLint
+
+# Coverage
+pytest tests/ --cov=api --cov=fleet_data --cov-report=term-missing
+```
+
+## Architecture
+
+FastAPI backend (:8000) + React/TypeScript dashboard (:3000 via nginx) + TimescaleDB (:5432). XGBoost classifier with 28 engineered features serves predictions via `/api/predict`.
+
+Services (`ModelService`, `DatabaseService`) are module-level singletons in `api/main.py`, initialized in the lifespan context manager. Routes access them via `from api.main import get_model_service, get_db_service`.
+
+## Key Patterns
+
+- **Encoding maps** live in `ml/constants.py` — single source of truth for both training (`ml/prepare_data.py`) and inference (`api/services/model_service.py`). Never duplicate these maps.
+- **Feature column order** in `model_service.engineer_features()` must exactly match `FEATURE_COLUMNS` in `ml/constants.py`. Wrong order = silent prediction errors.
+- **Scaler fallback**: `model_service.py` loads `scaler.joblib` if available, otherwise reconstructs from hardcoded feature ranges in `_build_fallback_scaler()`.
+- **DB connections**: Always `conn = self._get_conn()` in try block, `self._put_conn(conn)` in finally. Uses `psycopg2.pool.ThreadedConnectionPool`.
+- **API auth**: `api/auth.py` reads `API_KEY` env var inside the function body on every call (not at module load) so tests can monkeypatch. Auth skipped when env var is empty.
+- **Logging**: Use `logging.getLogger("sentinel.<module>")`. No `print()` in production code. Exception: `ml/train_classifier.py` uses print for interactive CLI output tables.
+- **Error handling**: Route handlers wrap bodies in try/except, raise `HTTPException(status_code=500)`. Generic exception handler in `api/main.py` catches unhandled errors.
+
+## Environment Variables
+
+See `.env.example`. Key vars: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `CORS_ORIGINS` (comma-separated), `API_KEY` (empty = no auth), `LOG_LEVEL` (default INFO).
+
+## Testing
+
+- Python: pytest with fixtures in `tests/conftest.py`. `model_service` fixture is session-scoped (loads real XGBoost model once). `client` fixture uses real model + mocked DB (no real database needed).
+- Dashboard: Vitest + React Testing Library. Mock `globalThis.fetch` in tests.
+- CI: GitHub Actions on push/PR to main — runs pytest + vitest + eslint.
+
+## Gotchas
+
+- `hour_of_day=0` is valid (midnight). Use `if x is not None`, never `x or default` for this field.
+- `ml/__init__.py` must not import heavy deps — torch was removed for this reason. Keep it lightweight.
+- `NOTIFICATION_TYPE_MAP` includes `None: 0` for training data. Inference never sees None (Pydantic validates), so this is safe.
+- `conftest.py` creates a FastAPI app without lifespan to avoid DB connection attempts in tests. Routes are copied from the real app.
+- Dashboard `AlertFeed` and `ModelHealth` fetch their own data independently. `App.tsx` only fetches health + stats on mount.

@@ -12,10 +12,14 @@ Usage:
     python -m scripts.seed_demo
 """
 
+import os
 import sys
 import time
+import logging
 import requests
 from datetime import datetime, timedelta
+
+logger = logging.getLogger("sentinel.seed")
 
 # Add project root to path
 sys.path.insert(0, '.')
@@ -26,6 +30,7 @@ from fleet_data.generate_fleet_data import (
 
 
 API_BASE = "http://localhost:8000"
+API_KEY = os.environ.get("API_KEY", "")
 TARGET_NOTIFICATIONS = 1000
 
 
@@ -36,7 +41,7 @@ def check_api():
         data = resp.json()
         if data.get('model_loaded') and data.get('db_connected'):
             return True
-        print(f"⚠️  API is up but not fully ready: {data}")
+        logger.warning(f"API is up but not fully ready: {data}")
         return False
     except requests.ConnectionError:
         return False
@@ -102,9 +107,13 @@ def post_predictions(notifications):
 
     for i, notif in enumerate(notifications):
         try:
+            headers = {"Content-Type": "application/json"}
+            if API_KEY:
+                headers["X-API-Key"] = API_KEY
             resp = requests.post(
                 f"{API_BASE}/api/predict",
                 json=notif,
+                headers=headers,
                 timeout=5,
             )
             if resp.status_code == 200:
@@ -147,44 +156,37 @@ def post_predictions(notifications):
 
 
 def main():
-    print("🌱 Sentinel Seed Script")
-    print("=" * 50)
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+    logger.info("Sentinel Seed Script")
 
     # Step 1: Check API
-    print("\n├── Checking API...")
+    logger.info("Checking API...")
     if not check_api():
-        print("❌ API not reachable at", API_BASE)
-        print("   Start it first: uvicorn api.main:app --port 8000")
+        logger.error(f"API not reachable at {API_BASE}. Start it first: uvicorn api.main:app --port 8000")
         sys.exit(1)
-    print("├── ✅ API is healthy")
+    logger.info("API is healthy")
 
     # Step 2: Simulate
-    print(f"├── Simulating fleet (50 vehicles, 12 hours)...")
+    logger.info("Simulating fleet (50 vehicles, 12 hours)...")
     notifications = run_mini_simulation(num_vehicles=50, hours=12)
 
     # Trim to target
     if len(notifications) > TARGET_NOTIFICATIONS:
         notifications = notifications[:TARGET_NOTIFICATIONS]
 
-    print(f"├── Collected {len(notifications)} notifications")
+    logger.info(f"Collected {len(notifications)} notifications")
 
     # Step 3: Fire predictions
-    print(f"├── Sending to /api/predict...")
+    logger.info("Sending to /api/predict...")
     results = post_predictions(notifications)
 
     # Step 4: Summary
-    print(f"\n{'=' * 50}")
-    print(f"✅ Seed complete!")
-    print(f"   Sent: {results['success']}  |  Failed: {results['failed']}  |  Time: {results['elapsed']:.1f}s")
-
-    print(f"\n   {'Type':<30} {'Total':>6} {'FP':>6} {'Real':>6}")
-    print(f"   {'-'*54}")
+    logger.info(f"Seed complete! Sent: {results['success']}  |  Failed: {results['failed']}  |  Time: {results['elapsed']:.1f}s")
     for ntype in sorted(results['by_type'].keys()):
         t = results['by_type'][ntype]
-        print(f"   {ntype:<30} {t['total']:>6} {t['fp']:>6} {t['real']:>6}")
-
-    print(f"\n   Dashboard ready at http://localhost:3000")
-    print(f"   API docs at {API_BASE}/docs")
+        logger.info(f"  {ntype:<30} total={t['total']}  fp={t['fp']}  real={t['real']}")
+    logger.info(f"Dashboard ready at http://localhost:3000")
+    logger.info(f"API docs at {API_BASE}/docs")
 
 
 if __name__ == "__main__":

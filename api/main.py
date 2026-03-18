@@ -7,15 +7,22 @@ Usage:
     uvicorn api.main:app --reload --port 8000
 """
 
+import os
 import time
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
+from api.logging_config import setup_logging
 from api.models import HealthResponse
 from api.services.model_service import ModelService
 from api.services.db_service import DatabaseService
+
+setup_logging()
+logger = logging.getLogger("sentinel.api")
 
 # ============================================================================
 # GLOBALS (initialized on startup)
@@ -43,21 +50,21 @@ async def lifespan(app: FastAPI):
     global _model_service, _db_service, _start_time
 
     # --- Startup ---
-    print("\n🚀 Starting Sentinel API...")
+    logger.info("Starting Sentinel API...")
     _start_time = time.time()
 
     _model_service = ModelService()
     _db_service = DatabaseService()
 
-    print("✅ Sentinel API ready\n")
+    logger.info("Sentinel API ready")
 
     yield
 
     # --- Shutdown ---
-    print("\n🛑 Shutting down Sentinel API...")
+    logger.info("Shutting down Sentinel API...")
     if _db_service:
         _db_service.close()
-    print("✅ Cleanup complete\n")
+    logger.info("Cleanup complete")
 
 
 # ============================================================================
@@ -71,14 +78,31 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow React frontend on localhost:3000
+# CORS — configurable via env var
+cors_origins = [
+    origin.strip()
+    for origin in os.environ.get(
+        "CORS_ORIGINS", "http://localhost:3000,http://localhost:5173"
+    ).split(",")
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Generic exception handler
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled exception")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {str(exc)}"},
+    )
+
 
 # ============================================================================
 # ROUTES

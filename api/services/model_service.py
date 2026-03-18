@@ -6,38 +6,19 @@ Handles feature engineering from raw notification data.
 """
 
 import os
+import logging
 import numpy as np
 import xgboost as xgb
 import joblib
 from datetime import datetime
 
+logger = logging.getLogger("sentinel.model")
 
-# ============================================================================
-# ENCODING MAPS (must match prepare_data.py exactly)
-# ============================================================================
 
-ROAD_TYPE_MAP = {
-    'highway': 0, 'main_road': 1, 'residential': 2,
-    'downtown': 3, 'school_zone': 4
-}
-
-TRAFFIC_MAP = {
-    'light': 0, 'moderate': 1, 'heavy': 2, 'standstill': 3
-}
-
-CONSTRUCTION_MAP = {
-    'none': 0, 'temporary': 1, 'persistent': 2, 'flagger': 3
-}
-
-NOTIFICATION_TYPE_MAP = {
-    'verification_request': 1, 'emergency_vehicle_alert': 2,
-    'stuck': 3, 'speed_anomaly': 4, 'impact_l0': 5, 'passenger_assist': 6
-}
-
-NOTIFICATION_SUBTYPE_MAP = {
-    None: 0, 'object_query': 1,
-    'traffic_signal_verify': 2, 'lane_mapping_verify': 3
-}
+from ml.constants import (
+    ROAD_TYPE_MAP, TRAFFIC_MAP, CONSTRUCTION_MAP,
+    NOTIFICATION_TYPE_MAP, NOTIFICATION_SUBTYPE_MAP,
+)
 
 
 class ModelService:
@@ -71,13 +52,13 @@ class ModelService:
         # Load scaler if available
         if os.path.exists(scaler_path):
             self.scaler = joblib.load(scaler_path)
-            print(f"✅ Loaded scaler from {scaler_path}")
+            logger.info(f"Loaded scaler from {scaler_path}")
         else:
             self.scaler = self._build_fallback_scaler()
-            print("⚠️  No scaler found — using reconstructed fallback")
+            logger.warning("No scaler found — using reconstructed fallback")
 
-        print(f"✅ Model loaded: {len(self.feature_columns)} features, "
-              f"threshold={self.threshold}, best_iter={self.best_iteration}")
+        logger.info(f"Model loaded: {len(self.feature_columns)} features, "
+                    f"threshold={self.threshold}, best_iter={self.best_iteration}")
 
     def _build_fallback_scaler(self):
         """
@@ -147,7 +128,9 @@ class ModelService:
         pedestrian_density = payload.get('pedestrian_density', 0.0)
         object_in_path = payload.get('object_in_path', False)
         time_since_stop = payload.get('time_since_stop', 0.0)
-        hour_of_day = payload.get('hour_of_day') or datetime.now().hour
+        hour_of_day = payload.get('hour_of_day')
+        if hour_of_day is None:
+            hour_of_day = datetime.now().hour
 
         # --- Speed features ---
         speed_ratio = speed / (expected_speed + 1)

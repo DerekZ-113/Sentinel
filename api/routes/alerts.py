@@ -5,11 +5,13 @@ GET /api/alerts
 Returns recent alerts with predictions for the dashboard feed.
 """
 
-from fastapi import APIRouter, Query
+import logging
+from fastapi import APIRouter, Query, HTTPException
 from typing import Optional
 
 from api.models import AlertsResponse
 
+logger = logging.getLogger("sentinel.api")
 router = APIRouter()
 
 
@@ -22,8 +24,12 @@ async def get_alerts(
     """Get recent alerts with model predictions."""
     from api.main import get_db_service
 
-    db_service = get_db_service()
-    result = db_service.get_recent_alerts(
-        limit=limit, offset=offset, notification_type=notification_type
-    )
-    return AlertsResponse(**result)
+    try:
+        db_service = get_db_service()
+        result = db_service.get_recent_alerts(
+            limit=limit, offset=offset, notification_type=notification_type
+        )
+        return AlertsResponse(**result)
+    except Exception as e:
+        logger.exception("Failed to fetch alerts")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch alerts: {str(e)}")

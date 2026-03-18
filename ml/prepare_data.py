@@ -7,10 +7,18 @@ Transforms raw telemetry + notification data into ML-ready features.
 v2.1: Added interaction features for better FP/real separation
 """
 
+import logging
 import pandas as pd
 import numpy as np
+import joblib
 from sqlalchemy import create_engine
 from sklearn.preprocessing import MinMaxScaler
+
+logger = logging.getLogger("sentinel.ml")
+from ml.constants import (
+    ROAD_TYPE_MAP, TRAFFIC_MAP, CONSTRUCTION_MAP,
+    NOTIFICATION_TYPE_MAP, NOTIFICATION_SUBTYPE_MAP,
+)
 
 # ============================================================================
 # DATABASE CONNECTION
@@ -18,7 +26,13 @@ from sklearn.preprocessing import MinMaxScaler
 
 def get_database_engine():
     """Create SQLAlchemy engine for TimescaleDB"""
-    connection_string = 'postgresql://postgres:password@localhost:5432/postgres'
+    import os
+    host = os.environ.get('DB_HOST', 'localhost')
+    port = os.environ.get('DB_PORT', '5432')
+    user = os.environ.get('DB_USER', 'postgres')
+    password = os.environ.get('DB_PASSWORD', 'password')
+    database = os.environ.get('DB_NAME', 'postgres')
+    connection_string = f'postgresql://{user}:{password}@{host}:{port}/{database}'
     engine = create_engine(connection_string)
     return engine
 
@@ -54,7 +68,7 @@ def load_data():
     df = pd.read_sql(query, engine)
     engine.dispose()
     
-    print(f"✅ Loaded {len(df):,} records from database")
+    logger.info(f"Loaded {len(df):,} records from database")
     return df
 
 # ============================================================================
@@ -88,54 +102,17 @@ def engineer_features(df):
     # ========================================
     # ROAD CONTEXT ENCODING
     # ========================================
-    
-    road_type_map = {
-        'highway': 0, 
-        'main_road': 1, 
-        'residential': 2, 
-        'downtown': 3, 
-        'school_zone': 4
-    }
-    traffic_map = {
-        'light': 0, 
-        'moderate': 1, 
-        'heavy': 2, 
-        'standstill': 3
-    }
-    construction_map = {
-        'none': 0, 
-        'temporary': 1, 
-        'persistent': 2, 
-        'flagger': 3
-    }
-    
-    df['road_type_encoded'] = df['road_type'].map(road_type_map)
-    df['traffic_encoded'] = df['traffic_condition'].map(traffic_map)
-    df['construction_encoded'] = df['construction_zone'].map(construction_map)
-    
+
+    df['road_type_encoded'] = df['road_type'].map(ROAD_TYPE_MAP)
+    df['traffic_encoded'] = df['traffic_condition'].map(TRAFFIC_MAP)
+    df['construction_encoded'] = df['construction_zone'].map(CONSTRUCTION_MAP)
+
     # ========================================
     # NOTIFICATION TYPE ENCODING
     # ========================================
-    
-    notification_type_map = {
-        None: 0,  # No notification (normal operation)
-        'verification_request': 1,
-        'emergency_vehicle_alert': 2,
-        'stuck': 3,
-        'speed_anomaly': 4,
-        'impact_l0': 5,
-        'passenger_assist': 6,
-    }
-    
-    notification_subtype_map = {
-        None: 0,
-        'object_query': 1,
-        'traffic_signal_verify': 2,
-        'lane_mapping_verify': 3,
-    }
-    
-    df['notification_type_encoded'] = df['notification_type'].map(notification_type_map)
-    df['notification_subtype_encoded'] = df['notification_subtype'].map(notification_subtype_map)
+
+    df['notification_type_encoded'] = df['notification_type'].map(NOTIFICATION_TYPE_MAP)
+    df['notification_subtype_encoded'] = df['notification_subtype'].map(NOTIFICATION_SUBTYPE_MAP)
     
     # ========================================
     # CONTEXT FEATURES
@@ -204,7 +181,7 @@ def engineer_features(df):
     df['impact_rough_road'] = (is_impact & 
                                (df['road_type'].isin(['residential', 'downtown']))).astype(int)
     
-    print(f"✅ Engineered {len(df.columns)} features")
+    logger.info(f"Engineered {len(df.columns)} features")
     
     return df
 
@@ -272,11 +249,11 @@ def prepare_training_data(df):
     no_intervention = notification_df[notification_df['needs_intervention'] == False]
     needs_intervention = notification_df[notification_df['needs_intervention'] == True]
     
-    print(f"\n📊 Notification Records:")
-    print(f"   Total notifications: {len(notification_df):,}")
-    print(f"   No intervention needed (FP): {len(no_intervention):,}")
-    print(f"   Intervention needed (Real): {len(needs_intervention):,}")
-    print(f"   Baseline FP rate: {len(no_intervention)/len(notification_df)*100:.1f}%")
+    logger.info("Notification Records:")
+    logger.info(f"  Total notifications: {len(notification_df):,}")
+    logger.info(f"  No intervention needed (FP): {len(no_intervention):,}")
+    logger.info(f"  Intervention needed (Real): {len(needs_intervention):,}")
+    logger.info(f"  Baseline FP rate: {len(no_intervention)/len(notification_df)*100:.1f}%")
     
     # Extract features
     X_no_intervention = no_intervention[feature_columns].values
@@ -291,10 +268,10 @@ def prepare_training_data(df):
     X_train_scaled = scaler.fit_transform(X_no_intervention)
     X_all_scaled = scaler.transform(X_all)
     
-    print(f"\n✅ Prepared training data:")
-    print(f"   Training samples (FP only): {X_train_scaled.shape}")
-    print(f"   Evaluation samples (all): {X_all_scaled.shape}")
-    print(f"   Features: {len(feature_columns)}")
+    logger.info(f"Prepared training data:")
+    logger.info(f"  Training samples (FP only): {X_train_scaled.shape}")
+    logger.info(f"  Evaluation samples (all): {X_all_scaled.shape}")
+    logger.info(f"  Features: {len(feature_columns)}")
     
     return X_train_scaled, X_all_scaled, y_all, notif_types, scaler, feature_columns
 
@@ -303,36 +280,36 @@ def prepare_training_data(df):
 # ============================================================================
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("SENTINEL DATA PREPARATION v2.1")
-    print("=" * 60)
-    
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+    logger.info("SENTINEL DATA PREPARATION v2.1")
+
     # Step 1: Load data
-    print("\n📥 Loading data from database...")
+    logger.info("Loading data from database...")
     df = load_data()
-    
+
     # Step 2: Engineer features
-    print("\n🔧 Engineering features...")
+    logger.info("Engineering features...")
     df = engineer_features(df)
-    
+
     # Step 3: Prepare training data
-    print("\n📦 Preparing training data...")
+    logger.info("Preparing training data...")
     X_train, X_all, y_all, notif_types, scaler, feature_cols = prepare_training_data(df)
-    
+
     # Step 4: Save processed data
-    print("\n💾 Saving processed data...")
+    logger.info("Saving processed data...")
     np.save('X_train.npy', X_train)
     np.save('X_all.npy', X_all)
     np.save('y_all.npy', y_all)
     np.save('notif_types.npy', notif_types)
-    
-    print(f"\n✅ Data preparation complete!")
-    print(f"   Saved: X_train.npy ({X_train.shape})")
-    print(f"   Saved: X_all.npy ({X_all.shape})")
-    print(f"   Saved: y_all.npy ({y_all.shape})")
-    print(f"   Saved: notif_types.npy ({notif_types.shape})")
-    
-    # Preview features
-    print(f"\n📋 Feature columns ({len(feature_cols)}):")
+    joblib.dump(scaler, 'scaler.joblib')
+
+    logger.info("Data preparation complete!")
+    logger.info(f"  Saved: X_train.npy ({X_train.shape})")
+    logger.info(f"  Saved: X_all.npy ({X_all.shape})")
+    logger.info(f"  Saved: y_all.npy ({y_all.shape})")
+    logger.info(f"  Saved: notif_types.npy ({notif_types.shape})")
+    logger.info(f"  Saved: scaler.joblib")
+
+    logger.info(f"Feature columns ({len(feature_cols)}):")
     for i, col in enumerate(feature_cols):
-        print(f"   {i}: {col}")
+        logger.info(f"  {i}: {col}")

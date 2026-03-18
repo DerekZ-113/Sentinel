@@ -8,7 +8,20 @@ export default function AlertFeed() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadAlerts = () => {
+  useEffect(() => {
+    fetchAlerts(20)
+      .then((data) => {
+        setAlerts(data.alerts);
+        setTotal(data.total);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.message);
+        setLoading(false);
+      });
+  }, []);
+
+  function retry() {
     setLoading(true);
     setError(null);
     fetchAlerts(20)
@@ -21,18 +34,14 @@ export default function AlertFeed() {
         setError(err.message);
         setLoading(false);
       });
-  };
-
-  useEffect(() => {
-    loadAlerts();
-  }, []);
+  }
 
   if (error) {
     return (
       <div className="bg-red-900/20 border border-red-800/50 rounded-xl p-6 h-80 flex flex-col items-center justify-center gap-3">
         <p className="text-red-400 text-sm">{error}</p>
         <button
-          onClick={loadAlerts}
+          onClick={retry}
           className="text-xs text-red-300 hover:text-white border border-red-700 px-3 py-1 rounded-lg transition-colors"
         >
           Retry

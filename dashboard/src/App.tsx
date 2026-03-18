@@ -7,11 +7,13 @@ import TypeBreakdown from "./components/TypeBreakdown";
 import SimulatePanel from "./components/SimulatePanel";
 import ModelHealth from "./components/ModelHealth";
 import DemoBanner from "./components/DemoBanner";
+import FPRateChart from "./components/FPRateChart";
 
 const NAV_ITEMS = [
   { id: "overview", label: "Overview" },
   { id: "alerts", label: "Recent Alerts" },
   { id: "breakdown", label: "Alerts by Type" },
+  { id: "fp-trend", label: "FP Rate Trend" },
   { id: "simulate", label: "Simulate" },
   { id: "model-health", label: "Model Health" },
 ];
@@ -167,6 +169,10 @@ function App() {
             <TypeBreakdown byType={stats.by_type} />
           </section>
         </div>
+
+        <section id="fp-trend">
+          <FPRateChart />
+        </section>
 
         <section id="simulate">
           <SimulatePanel />

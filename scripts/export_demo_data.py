@@ -195,6 +195,71 @@ def compute_model_health(alerts):
     }
 
 
+def compute_fp_over_time(alerts):
+    """Compute FP rate bucketed by hour, matching FPOverTimeResponse shape."""
+    from datetime import datetime as dt
+
+    # Parse times and find range
+    for a in alerts:
+        a['_parsed_time'] = dt.fromisoformat(a['time'].replace('Z', '+00:00'))
+
+    times = [a['_parsed_time'] for a in alerts]
+    min_time = min(times)
+    max_time = max(times)
+
+    # Create hourly buckets
+    from datetime import timedelta
+    bucket_hours = []
+    current = min_time.replace(minute=0, second=0, microsecond=0)
+    while current <= max_time:
+        bucket_hours.append(current)
+        current += timedelta(hours=1)
+
+    buckets = []
+    for i, start in enumerate(bucket_hours):
+        end = start + timedelta(hours=1)
+        items = [a for a in alerts if start <= a['_parsed_time'] < end]
+
+        total = len(items)
+        flagged = sum(1 for a in items if a['needs_intervention_predicted'])
+        suppressed = total - flagged
+
+        flagged_with_truth = [a for a in items
+                              if a['needs_intervention_predicted']
+                              and a['needs_intervention_actual'] is not None]
+        if flagged_with_truth:
+            fp = sum(1 for a in flagged_with_truth if not a['needs_intervention_actual'])
+            fp_rate = round(fp / len(flagged_with_truth), 4)
+        else:
+            fp_rate = None
+
+        with_truth = [a for a in items if a['needs_intervention_actual'] is not None]
+        if with_truth:
+            correct = sum(1 for a in with_truth
+                          if a['needs_intervention_predicted'] == a['needs_intervention_actual'])
+            accuracy = round(correct / len(with_truth), 4)
+        else:
+            accuracy = None
+
+        buckets.append({
+            'time': start.isoformat() + 'Z',
+            'total': total,
+            'flagged': flagged,
+            'suppressed': suppressed,
+            'fp_rate': fp_rate,
+            'accuracy': accuracy,
+        })
+
+    # Clean up temp field
+    for a in alerts:
+        del a['_parsed_time']
+
+    return {
+        'time_window_hours': 24,
+        'buckets': buckets,
+    }
+
+
 def main():
     logger.info("Sentinel Demo Data Export")
 
@@ -212,6 +277,7 @@ def main():
     # Step 3: Compute aggregates
     stats = compute_stats(alerts)
     model_health = compute_model_health(alerts)
+    fp_over_time = compute_fp_over_time(alerts)
     health = {
         'status': 'healthy',
         'model_loaded': True,
@@ -236,6 +302,7 @@ def main():
         'stats.json': stats,
         'model-health.json': model_health,
         'health.json': health,
+        'fp-over-time.json': fp_over_time,
     }
 
     for filename, data in files.items():

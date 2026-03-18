@@ -10,6 +10,7 @@ import demoAlerts from "../data/alerts.json";
 import demoStats from "../data/stats.json";
 import demoModelHealth from "../data/model-health.json";
 import demoHealth from "../data/health.json";
+import demoFPOverTime from "../data/fp-over-time.json";
 import { demoPredict } from "./demoPredict";
 
 const API_BASE = "/api";
@@ -104,6 +105,20 @@ export interface ModelHealthResponse {
   suppressed_by_type: Record<string, number>;
 }
 
+export interface FPBucket {
+  time: string;
+  total: number;
+  flagged: number;
+  suppressed: number;
+  fp_rate: number | null;
+  accuracy: number | null;
+}
+
+export interface FPOverTimeResponse {
+  time_window_hours: number;
+  buckets: FPBucket[];
+}
+
 // ============================================================================
 // API CALLS
 // ============================================================================
@@ -168,5 +183,17 @@ export async function postPredict(
     headers,
     body: JSON.stringify(payload),
   });
+  return res.json();
+}
+
+export async function fetchFPOverTime(
+  hours = 24,
+  buckets = 12
+): Promise<FPOverTimeResponse> {
+  if (DEMO_MODE)
+    return Promise.resolve(demoFPOverTime as FPOverTimeResponse);
+  const res = await fetch(
+    `${API_BASE}/stats/fp-over-time?hours=${hours}&buckets=${buckets}`
+  );
   return res.json();
 }

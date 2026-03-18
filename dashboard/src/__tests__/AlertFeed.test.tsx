@@ -156,4 +156,18 @@ describe('AlertFeed', () => {
       expect(screen.getByText('Retry')).toBeInTheDocument()
     })
   })
+
+  it('shows pagination controls', async () => {
+    vi.spyOn(globalThis, 'fetch').mockReturnValue(
+      Promise.resolve({
+        json: () => Promise.resolve({ alerts: mockAlerts, total: 100, limit: 20, offset: 0 }),
+      } as Response)
+    )
+    render(<AlertFeed />)
+    await waitFor(() => {
+      expect(screen.getByText('Previous')).toBeInTheDocument()
+      expect(screen.getByText('Next')).toBeInTheDocument()
+      expect(screen.getByText('Page 1 of 5')).toBeInTheDocument()
+    })
+  })
 })

@@ -62,6 +62,32 @@ class TestModelHealthEndpoint:
         mock_db_service.get_model_health.assert_called_once_with(hours=48)
 
 
+class TestFPOverTimeEndpoint:
+
+    def test_fp_over_time(self, client, mock_db_service):
+        mock_db_service.get_fp_over_time.return_value = {
+            "time_window_hours": 24,
+            "buckets": [
+                {"time": "2024-12-01T06:00:00Z", "total": 10, "flagged": 3,
+                 "suppressed": 7, "fp_rate": 0.0, "accuracy": 0.8},
+            ],
+        }
+        resp = client.get("/api/stats/fp-over-time")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "buckets" in data
+        assert len(data["buckets"]) == 1
+
+    def test_fp_over_time_custom_params(self, client, mock_db_service):
+        mock_db_service.get_fp_over_time.return_value = {
+            "time_window_hours": 48,
+            "buckets": [],
+        }
+        resp = client.get("/api/stats/fp-over-time?hours=48&buckets=24")
+        assert resp.status_code == 200
+        mock_db_service.get_fp_over_time.assert_called_once_with(hours=48, buckets=24)
+
+
 class TestStatsByTypeEndpoint:
 
     def test_valid_type(self, client, mock_db_service):

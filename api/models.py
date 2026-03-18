@@ -147,6 +147,22 @@ class ModelHealthResponse(BaseModel):
     suppressed_by_type: dict  # {type: count}
 
 
+class FPBucket(BaseModel):
+    """Single time bucket for FP rate over time."""
+    time: str
+    total: int
+    flagged: int
+    suppressed: int
+    fp_rate: float | None
+    accuracy: float | None
+
+
+class FPOverTimeResponse(BaseModel):
+    """Response from GET /api/stats/fp-over-time"""
+    time_window_hours: int
+    buckets: list[FPBucket]
+
+
 class HealthResponse(BaseModel):
     """Response from GET /health"""
     status: str

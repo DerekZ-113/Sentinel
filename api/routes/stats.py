@@ -8,7 +8,7 @@ GET /api/stats/{type}   — per-type breakdown
 import logging
 from fastapi import APIRouter, Query, HTTPException
 
-from api.models import StatsResponse, TypeStats, ModelHealthResponse
+from api.models import StatsResponse, TypeStats, ModelHealthResponse, FPOverTimeResponse
 
 logger = logging.getLogger("sentinel.api")
 router = APIRouter()
@@ -40,6 +40,23 @@ async def get_model_health(hours: int = Query(24, ge=1, le=720)):
     except Exception as e:
         logger.exception("Failed to fetch model health")
         raise HTTPException(status_code=500, detail=f"Failed to fetch model health: {str(e)}")
+
+
+@router.get("/stats/fp-over-time", response_model=FPOverTimeResponse)
+async def get_fp_over_time(
+    hours: int = Query(24, ge=1, le=720),
+    buckets: int = Query(12, ge=4, le=48),
+):
+    """Get FP rate bucketed over time."""
+    from api.main import get_db_service
+
+    try:
+        db_service = get_db_service()
+        result = db_service.get_fp_over_time(hours=hours, buckets=buckets)
+        return FPOverTimeResponse(**result)
+    except Exception as e:
+        logger.exception("Failed to fetch FP over time")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch FP over time: {str(e)}")
 
 
 @router.get("/stats/{notification_type}", response_model=TypeStats)

@@ -1,0 +1,13 @@
+{
+  "time_window_hours": 24,
+  "buckets": [
+    {
+      "time": "2024-12-01T06:00:00+00:00Z",
+      "total": 1000,
+      "flagged": 111,
+      "suppressed": 889,
+      "fp_rate": 0.0,
+      "accuracy": 0.759
+    }
+  ]
+}

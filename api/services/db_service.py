@@ -388,6 +388,81 @@ class DatabaseService:
             self._put_conn(conn)
 
     # ========================================================================
+    # FP OVER TIME
+    # ========================================================================
+
+    def get_fp_over_time(self, hours: int = 24, buckets: int = 12) -> dict:
+        """Get FP rate bucketed over time."""
+        conn = self._get_conn()
+        try:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            since = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+            cursor.execute("""
+                SELECT time, needs_intervention_predicted, needs_intervention_actual
+                FROM predictions
+                WHERE time >= %s
+                ORDER BY time
+            """, (since,))
+            rows = cursor.fetchall()
+            cursor.close()
+
+            # Build bucket boundaries
+            bucket_interval = timedelta(hours=hours / buckets)
+            bucket_starts = [since + i * bucket_interval for i in range(buckets)]
+
+            # Assign rows to buckets
+            bucket_data: list[list[dict]] = [[] for _ in range(buckets)]
+            for row in rows:
+                for i in range(buckets - 1, -1, -1):
+                    if row['time'] >= bucket_starts[i]:
+                        bucket_data[i].append(dict(row))
+                        break
+
+            # Compute metrics per bucket
+            result_buckets = []
+            for i, start in enumerate(bucket_starts):
+                items = bucket_data[i]
+                total = len(items)
+                flagged = sum(1 for r in items if r['needs_intervention_predicted'])
+                suppressed = total - flagged
+
+                # FP rate among flagged with ground truth
+                flagged_with_truth = [r for r in items
+                                      if r['needs_intervention_predicted']
+                                      and r['needs_intervention_actual'] is not None]
+                if flagged_with_truth:
+                    fp = sum(1 for r in flagged_with_truth if not r['needs_intervention_actual'])
+                    fp_rate = round(fp / len(flagged_with_truth), 4)
+                else:
+                    fp_rate = None
+
+                # Accuracy
+                with_truth = [r for r in items if r['needs_intervention_actual'] is not None]
+                if with_truth:
+                    correct = sum(1 for r in with_truth
+                                  if r['needs_intervention_predicted'] == r['needs_intervention_actual'])
+                    accuracy = round(correct / len(with_truth), 4)
+                else:
+                    accuracy = None
+
+                result_buckets.append({
+                    'time': start.isoformat(),
+                    'total': total,
+                    'flagged': flagged,
+                    'suppressed': suppressed,
+                    'fp_rate': fp_rate,
+                    'accuracy': accuracy,
+                })
+
+            return {
+                'time_window_hours': hours,
+                'buckets': result_buckets,
+            }
+        finally:
+            self._put_conn(conn)
+
+    # ========================================================================
     # HEALTH
     # ========================================================================
 

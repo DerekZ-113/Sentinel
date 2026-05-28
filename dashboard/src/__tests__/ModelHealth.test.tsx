@@ -123,4 +123,30 @@ describe('ModelHealth', () => {
       expect(screen.getByText('Retry')).toBeInTheDocument()
     })
   })
+
+  it('refetches when refreshToken changes', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch')
+      .mockReturnValueOnce(
+        Promise.resolve({
+          json: () => Promise.resolve(mockHealthData),
+        } as Response)
+      )
+      .mockReturnValueOnce(
+        Promise.resolve({
+          json: () => Promise.resolve({ ...mockHealthData, total_predictions: 2000 }),
+        } as Response)
+      )
+
+    const { rerender } = render(<ModelHealth refreshToken={0} />)
+    await waitFor(() => {
+      expect(screen.getByText('1,000')).toBeInTheDocument()
+    })
+
+    rerender(<ModelHealth refreshToken={1} />)
+
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalledTimes(2)
+      expect(screen.getByText('2,000')).toBeInTheDocument()
+    })
+  })
 })

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchHealth, fetchStats } from "./services/api";
 import type { HealthResponse, StatsResponse } from "./services/api";
 import OverviewCards from "./components/OverviewCards";
@@ -18,23 +18,80 @@ const NAV_ITEMS = [
   { id: "model-health", label: "Model Health" },
 ];
 
+const REFRESH_INTERVAL_MS = 5000;
+
+type LoadMode = "initial" | "refresh";
+
 function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [liveRefreshEnabled, setLiveRefreshEnabled] = useState(false);
+  const [refreshToken, setRefreshToken] = useState(0);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState("overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const isDemoMode = import.meta.env.VITE_DEMO_MODE === "true";
+  const dashboardReady = health !== null && stats !== null;
 
-  useEffect(() => {
-    Promise.all([fetchHealth(), fetchStats()])
+  const loadDashboardSummary = useCallback((mode: LoadMode) => {
+    return Promise.all([fetchHealth(), fetchStats()])
       .then(([h, s]) => {
         setHealth(h);
         setStats(s);
+        setLastUpdatedAt(new Date());
+        setRefreshError(null);
       })
-      .catch((err) => setError(err.message));
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        if (mode === "initial") {
+          setError(message);
+        } else {
+          setRefreshError(`Refresh failed: ${message}`);
+        }
+      });
   }, []);
 
+  const refreshDashboard = useCallback(() => {
+    setRefreshToken((token) => token + 1);
+    void loadDashboardSummary("refresh");
+  }, [loadDashboardSummary]);
+
   useEffect(() => {
+    void loadDashboardSummary("initial");
+  }, [loadDashboardSummary]);
+
+  useEffect(() => {
+    if (!liveRefreshEnabled || isDemoMode || !dashboardReady) return;
+
+    const intervalId = window.setInterval(refreshDashboard, REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(intervalId);
+  }, [dashboardReady, isDemoMode, liveRefreshEnabled, refreshDashboard]);
+
+  function toggleLiveRefresh() {
+    const nextEnabled = !liveRefreshEnabled;
+    setLiveRefreshEnabled(nextEnabled);
+    if (nextEnabled && !isDemoMode && dashboardReady) {
+      refreshDashboard();
+    } else {
+      setRefreshError(null);
+    }
+  }
+
+  function formatLastUpdated(date: Date | null) {
+    if (!date) return null;
+    return date.toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  }
+
+  const lastUpdatedText = formatLastUpdated(lastUpdatedAt);
+
+  useEffect(() => {
+    if (!health || !stats) return;
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -139,7 +196,7 @@ function App() {
         </nav>
 
         {/* Status footer */}
-        <div className="px-4 py-3 border-t border-gray-800">
+        <div className="px-4 py-3 border-t border-gray-800 space-y-3">
           <div className="flex items-center gap-2">
             <span
               className={`h-1.5 w-1.5 rounded-full ${
@@ -150,6 +207,40 @@ function App() {
               {health.status} · {health.model_features} features
             </span>
           </div>
+          {!isDemoMode && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-gray-500 text-[11px]">Live Refresh</span>
+                <button
+                  type="button"
+                  onClick={toggleLiveRefresh}
+                  aria-label={
+                    liveRefreshEnabled
+                      ? "Turn live refresh off"
+                      : "Turn live refresh on"
+                  }
+                  aria-pressed={liveRefreshEnabled}
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                    liveRefreshEnabled
+                      ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
+                      : "bg-gray-800 text-gray-400 border border-gray-700"
+                  }`}
+                >
+                  {liveRefreshEnabled ? "On" : "Off"}
+                </button>
+              </div>
+              {lastUpdatedText && (
+                <p className="text-gray-600 text-[10px]">
+                  Last updated {lastUpdatedText}
+                </p>
+              )}
+              {refreshError && (
+                <p className="text-yellow-300/80 text-[10px] leading-snug">
+                  {refreshError}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </aside>
 
@@ -163,7 +254,7 @@ function App() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           <section id="alerts">
-            <AlertFeed />
+            <AlertFeed refreshToken={refreshToken} />
           </section>
           <section id="breakdown" className="lg:sticky lg:top-6">
             <TypeBreakdown byType={stats.by_type} />
@@ -171,7 +262,7 @@ function App() {
         </div>
 
         <section id="fp-trend">
-          <FPRateChart />
+          <FPRateChart refreshToken={refreshToken} />
         </section>
 
         <section id="simulate">
@@ -179,7 +270,7 @@ function App() {
         </section>
 
         <section id="model-health">
-          <ModelHealth />
+          <ModelHealth refreshToken={refreshToken} />
         </section>
       </main>
     </div>

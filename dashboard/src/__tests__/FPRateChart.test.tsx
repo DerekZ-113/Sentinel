@@ -48,4 +48,37 @@ describe("FPRateChart", () => {
       expect(screen.getByText("Retry")).toBeInTheDocument();
     });
   });
+
+  it("refetches when refreshToken changes", async () => {
+    const refreshedData = {
+      ...mockData,
+      buckets: [
+        ...mockData.buckets,
+        { time: "2024-12-01T09:00:00Z", total: 105, flagged: 20, suppressed: 85, fp_rate: 0.05, accuracy: 0.9 },
+      ],
+    };
+    const spy = vi.spyOn(globalThis, "fetch")
+      .mockReturnValueOnce(
+        Promise.resolve({
+          json: () => Promise.resolve(mockData),
+        } as Response)
+      )
+      .mockReturnValueOnce(
+        Promise.resolve({
+          json: () => Promise.resolve(refreshedData),
+        } as Response)
+      );
+
+    const { rerender } = render(<FPRateChart refreshToken={0} />);
+    await waitFor(() => {
+      expect(screen.getByText("Last 3 hours")).toBeInTheDocument();
+    });
+
+    rerender(<FPRateChart refreshToken={1} />);
+
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalledTimes(2);
+      expect(screen.getByText("Last 4 hours")).toBeInTheDocument();
+    });
+  });
 });

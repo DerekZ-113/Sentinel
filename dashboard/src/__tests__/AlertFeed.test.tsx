@@ -170,4 +170,58 @@ describe('AlertFeed', () => {
       expect(screen.getByText('Page 1 of 5')).toBeInTheDocument()
     })
   })
+
+  it('refetches when refreshToken changes', async () => {
+    const refreshedAlert = {
+      ...mockAlerts[0],
+      id: 99,
+      vehicle_id: 'vehicle_099',
+    }
+    const spy = vi.spyOn(globalThis, 'fetch')
+      .mockReturnValueOnce(
+        Promise.resolve({
+          json: () => Promise.resolve({ alerts: mockAlerts, total: 3, limit: 20, offset: 0 }),
+        } as Response)
+      )
+      .mockReturnValueOnce(
+        Promise.resolve({
+          json: () => Promise.resolve({ alerts: [refreshedAlert], total: 1, limit: 20, offset: 0 }),
+        } as Response)
+      )
+
+    const { rerender } = render(<AlertFeed refreshToken={0} />)
+    await waitFor(() => {
+      expect(screen.getByText('vehicle_001')).toBeInTheDocument()
+    })
+
+    rerender(<AlertFeed refreshToken={1} />)
+
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalledTimes(2)
+      expect(screen.getByText('vehicle_099')).toBeInTheDocument()
+    })
+  })
+
+  it('keeps last good alerts visible when a refresh fails', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockReturnValueOnce(
+        Promise.resolve({
+          json: () => Promise.resolve({ alerts: mockAlerts, total: 3, limit: 20, offset: 0 }),
+        } as Response)
+      )
+      .mockImplementationOnce(() => Promise.reject(new Error('Refresh failed')))
+
+    const { rerender } = render(<AlertFeed refreshToken={0} />)
+    await waitFor(() => {
+      expect(screen.getByText('vehicle_001')).toBeInTheDocument()
+    })
+
+    rerender(<AlertFeed refreshToken={1} />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Refresh failed: Refresh failed')).toBeInTheDocument()
+    })
+    expect(screen.getByText('vehicle_001')).toBeInTheDocument()
+    expect(screen.queryByText('Retry')).not.toBeInTheDocument()
+  })
 })

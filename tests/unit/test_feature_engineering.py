@@ -147,6 +147,10 @@ class TestContextFeatures:
         f = _feat(model_service, _make_payload(ev_distance=None), "ev_distance_normalized")
         assert f == pytest.approx(999.0 / 500.0, abs=1e-4)
 
+    def test_ev_distance_zero_normalized(self, model_service):
+        f = _feat(model_service, _make_payload(ev_distance=0), "ev_distance_normalized")
+        assert f == pytest.approx(0.0, abs=1e-6)
+
     def test_ev_distance_250_normalized(self, model_service):
         f = _feat(model_service, _make_payload(ev_distance=250), "ev_distance_normalized")
         assert f == pytest.approx(0.5, abs=1e-6)

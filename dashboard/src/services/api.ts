@@ -16,6 +16,62 @@ import { demoPredict } from "./demoPredict";
 const API_BASE = "/api";
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
 
+type ValidationIssue = {
+  loc?: Array<string | number>;
+  msg?: string;
+};
+
+function formatValidationIssue(issue: unknown): string {
+  if (typeof issue !== "object" || issue === null) {
+    return String(issue);
+  }
+
+  const validationIssue = issue as ValidationIssue;
+  const location = Array.isArray(validationIssue.loc)
+    ? validationIssue.loc.join(".")
+    : "";
+  const message = validationIssue.msg ?? JSON.stringify(issue);
+
+  return location ? `${location}: ${message}` : message;
+}
+
+function formatErrorDetail(body: unknown): string | undefined {
+  if (typeof body === "string") return body;
+  if (typeof body !== "object" || body === null) return undefined;
+
+  const detail = (body as { detail?: unknown; message?: unknown; error?: unknown }).detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail.map(formatValidationIssue).join("; ");
+  }
+
+  const message = (body as { message?: unknown }).message;
+  if (typeof message === "string") return message;
+
+  const error = (body as { error?: unknown }).error;
+  if (typeof error === "string") return error;
+
+  return undefined;
+}
+
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = init === undefined ? await fetch(url) : await fetch(url, init);
+
+  if (res.ok === false) {
+    let detail: string | undefined;
+    try {
+      detail = formatErrorDetail(await res.json());
+    } catch {
+      detail = undefined;
+    }
+
+    const baseMessage = `Request to ${url} failed with ${res.status} ${res.statusText}`;
+    throw new Error(detail ? `${baseMessage}: ${detail}` : baseMessage);
+  }
+
+  return res.json() as Promise<T>;
+}
+
 // ============================================================================
 // INTERFACES
 // ============================================================================
@@ -125,14 +181,12 @@ export interface FPOverTimeResponse {
 
 export async function fetchHealth(): Promise<HealthResponse> {
   if (DEMO_MODE) return Promise.resolve(demoHealth as HealthResponse);
-  const res = await fetch("/health");
-  return res.json();
+  return fetchJson<HealthResponse>("/health");
 }
 
 export async function fetchStats(hours = 24): Promise<StatsResponse> {
   if (DEMO_MODE) return Promise.resolve(demoStats as StatsResponse);
-  const res = await fetch(`${API_BASE}/stats?hours=${hours}`);
-  return res.json();
+  return fetchJson<StatsResponse>(`${API_BASE}/stats?hours=${hours}`);
 }
 
 export async function fetchAlerts(
@@ -154,8 +208,7 @@ export async function fetchAlerts(
   if (notificationType) {
     url += `&notification_type=${notificationType}`;
   }
-  const res = await fetch(url);
-  return res.json();
+  return fetchJson<AlertsResponse>(url);
 }
 
 export async function fetchModelHealth(
@@ -163,8 +216,9 @@ export async function fetchModelHealth(
 ): Promise<ModelHealthResponse> {
   if (DEMO_MODE)
     return Promise.resolve(demoModelHealth as ModelHealthResponse);
-  const res = await fetch(`${API_BASE}/stats/model-health?hours=${hours}`);
-  return res.json();
+  return fetchJson<ModelHealthResponse>(
+    `${API_BASE}/stats/model-health?hours=${hours}`
+  );
 }
 
 export async function postPredict(
@@ -178,12 +232,11 @@ export async function postPredict(
   if (apiKey) {
     headers["X-API-Key"] = apiKey;
   }
-  const res = await fetch(`${API_BASE}/predict`, {
+  return fetchJson<PredictionResponse>(`${API_BASE}/predict`, {
     method: "POST",
     headers,
     body: JSON.stringify(payload),
   });
-  return res.json();
 }
 
 export async function fetchFPOverTime(
@@ -192,8 +245,7 @@ export async function fetchFPOverTime(
 ): Promise<FPOverTimeResponse> {
   if (DEMO_MODE)
     return Promise.resolve(demoFPOverTime as FPOverTimeResponse);
-  const res = await fetch(
+  return fetchJson<FPOverTimeResponse>(
     `${API_BASE}/stats/fp-over-time?hours=${hours}&buckets=${buckets}`
   );
-  return res.json();
 }

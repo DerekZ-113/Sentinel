@@ -8,8 +8,9 @@ RUN npm ci
 
 COPY dashboard/ .
 
-# Set API URL for production build
-ENV VITE_API_BASE=http://localhost:8000
+# Docker Compose should serve the live API through nginx, not the static demo
+# values loaded from dashboard/.env.production.
+ENV VITE_DEMO_MODE=false
 
 RUN npm run build
 

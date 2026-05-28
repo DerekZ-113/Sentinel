@@ -146,7 +146,8 @@ class ModelService:
         notification_subtype_encoded = NOTIFICATION_SUBTYPE_MAP.get(notification_subtype, 0)
 
         # --- Context features ---
-        ev_distance_normalized = min((ev_distance or 999) / 500.0, 2.0)
+        ev_distance_for_model = ev_distance if ev_distance is not None else 999
+        ev_distance_normalized = min(ev_distance_for_model / 500.0, 2.0)
         pedestrian_density = max(0.0, min(1.0, pedestrian_density))
         object_in_path_int = int(object_in_path)
         time_since_stop_normalized = min(time_since_stop / 600.0, 2.0)

@@ -13,6 +13,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY api/ api/
+COPY ml/__init__.py ml/__init__.py
+COPY ml/constants.py ml/constants.py
 COPY ml/xgboost_model.json ml/xgboost_model.json
 COPY ml/xgboost_config.joblib ml/xgboost_config.joblib
 COPY fleet_data/ fleet_data/

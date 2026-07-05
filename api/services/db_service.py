@@ -43,38 +43,17 @@ class DatabaseService:
         self.connection_pool.putconn(conn)
 
     def _ensure_predictions_table(self) -> None:
-        """Create predictions table if it doesn't exist."""
+        """Create predictions table if it doesn't exist.
+
+        DDL comes from api.services.schema — the single source shared with
+        setup_database.py, so the two provisioning paths can't drift apart.
+        """
+        from api.services.schema import PREDICTIONS_DDL
+
         conn = self._get_conn()
         try:
             cursor = conn.cursor()
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS predictions (
-                    id                          SERIAL PRIMARY KEY,
-                    time                        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    vehicle_id                  TEXT NOT NULL,
-                    notification_type           TEXT NOT NULL,
-                    notification_subtype        TEXT,
-                    needs_intervention_predicted BOOLEAN NOT NULL,
-                    needs_intervention_actual    BOOLEAN,
-                    confidence                  FLOAT NOT NULL,
-                    raw_score                   FLOAT NOT NULL,
-                    speed                       FLOAT,
-                    expected_speed              FLOAT,
-                    road_type                   TEXT,
-                    traffic_condition           TEXT,
-                    construction_zone           TEXT,
-                    pedestrian_density          FLOAT,
-                    ev_distance                 FLOAT,
-                    object_in_path              BOOLEAN,
-                    time_since_stop             FLOAT,
-                    payload_json                JSONB
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_predictions_time
-                    ON predictions (time DESC);
-                CREATE INDEX IF NOT EXISTS idx_predictions_type
-                    ON predictions (notification_type, time DESC);
-            """)
+            cursor.execute(PREDICTIONS_DDL)
             conn.commit()
             cursor.close()
         finally:

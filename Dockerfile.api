@@ -2,14 +2,15 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system deps for psycopg2, xgboost, and health checks
+# System deps: libgomp1 for xgboost, curl for healthcheck/entrypoint.
+# No gcc/libpq-dev — every Python dep ships wheels (psycopg2-binary).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq-dev gcc libgomp1 curl \
+    libgomp1 curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python deps
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python deps from the lock (pinned; regenerate per requirements.lock header)
+COPY requirements.lock .
+RUN pip install --no-cache-dir -r requirements.lock
 
 # Copy application code
 COPY api/ api/
@@ -30,6 +31,11 @@ ENV DB_PORT=5432
 ENV DB_NAME=postgres
 ENV DB_USER=postgres
 ENV DB_PASSWORD=
+
+# Run as a non-root user
+RUN useradd --create-home --uid 1000 sentinel \
+    && chown -R sentinel:sentinel /app
+USER sentinel
 
 EXPOSE 8000
 

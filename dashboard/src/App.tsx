@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { DEMO_MODE } from "./services/api";
 import { useLiveBootstrap } from "./hooks/useLiveBootstrap";
 import { useDemoBootstrap } from "./demo/demoData";
@@ -20,8 +20,6 @@ import type { DemoAlert } from "./demo/types";
 // dead-code-eliminates the unused branch (and the demo modules + fixtures
 // behind it) from live builds.
 const useBootstrap = DEMO_MODE ? useDemoBootstrap : useLiveBootstrap;
-const FPChartSection = DEMO_MODE ? DemoFPRateChart : FPRateChart;
-const HealthSection = DEMO_MODE ? DemoModelHealth : ModelHealth;
 
 const NAV_ITEMS = [
   { id: "overview", label: "Overview" },
@@ -32,14 +30,49 @@ const NAV_ITEMS = [
   { id: "model-health", label: "Model Health" },
 ];
 
+const REFRESH_INTERVAL_MS = 5000;
+
+function formatLastUpdated(date: Date | null) {
+  if (!date) return null;
+  return date.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 function App() {
-  const { health, stats, error, retry } = useBootstrap();
+  const { health, stats, error, refreshError, lastUpdatedAt, retry, refresh } =
+    useBootstrap();
+  const [liveRefreshEnabled, setLiveRefreshEnabled] = useState(false);
+  const [refreshToken, setRefreshToken] = useState(0);
   const [activeSection, setActiveSection] = useState("overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState<DemoAlert | null>(null);
   const [simulateOpen, setSimulateOpen] = useState(false);
 
   const ready = health !== null && stats !== null;
+
+  // Live-mode polling: bump the token so data-owning panels refetch too
+  const refreshDashboard = useCallback(() => {
+    setRefreshToken((token) => token + 1);
+    refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    if (DEMO_MODE || !liveRefreshEnabled || !ready) return;
+
+    const intervalId = window.setInterval(refreshDashboard, REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(intervalId);
+  }, [liveRefreshEnabled, ready, refreshDashboard]);
+
+  function toggleLiveRefresh() {
+    const nextEnabled = !liveRefreshEnabled;
+    setLiveRefreshEnabled(nextEnabled);
+    if (nextEnabled && ready) {
+      refreshDashboard();
+    }
+  }
 
   useEffect(() => {
     if (!ready) return;
@@ -78,6 +111,8 @@ function App() {
     }
     scrollTo(id);
   }
+
+  const lastUpdatedText = formatLastUpdated(lastUpdatedAt);
 
   if (error) {
     return (
@@ -164,7 +199,7 @@ function App() {
         </nav>
 
         {/* Status footer */}
-        <div className="px-4 py-3 border-t border-gray-800">
+        <div className="px-4 py-3 border-t border-gray-800 space-y-3">
           <div className="flex items-center gap-2">
             <span
               className={`h-1.5 w-1.5 rounded-full ${
@@ -175,6 +210,40 @@ function App() {
               {health.status} · {health.model_features} features
             </span>
           </div>
+          {!DEMO_MODE && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-gray-500 text-[11px]">Live Refresh</span>
+                <button
+                  type="button"
+                  onClick={toggleLiveRefresh}
+                  aria-label={
+                    liveRefreshEnabled
+                      ? "Turn live refresh off"
+                      : "Turn live refresh on"
+                  }
+                  aria-pressed={liveRefreshEnabled}
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                    liveRefreshEnabled
+                      ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
+                      : "bg-gray-800 text-gray-400 border border-gray-700"
+                  }`}
+                >
+                  {liveRefreshEnabled ? "On" : "Off"}
+                </button>
+              </div>
+              {lastUpdatedText && (
+                <p className="text-gray-600 text-[10px]">
+                  Last updated {lastUpdatedText}
+                </p>
+              )}
+              {liveRefreshEnabled && refreshError && (
+                <p className="text-yellow-300/80 text-[10px] leading-snug">
+                  {refreshError}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </aside>
 
@@ -194,7 +263,7 @@ function App() {
               {DEMO_MODE ? (
                 <LiveAlertFeed onSelect={setSelectedAlert} />
               ) : (
-                <AlertFeed />
+                <AlertFeed refreshToken={refreshToken} />
               )}
             </section>
             <div className="space-y-5">
@@ -206,7 +275,11 @@ function App() {
                 />
               </section>
               <section id="fp-trend">
-                <FPChartSection />
+                {DEMO_MODE ? (
+                  <DemoFPRateChart />
+                ) : (
+                  <FPRateChart refreshToken={refreshToken} />
+                )}
               </section>
             </div>
           </div>
@@ -218,7 +291,11 @@ function App() {
           )}
 
           <section id="model-health">
-            <HealthSection />
+            {DEMO_MODE ? (
+              <DemoModelHealth />
+            ) : (
+              <ModelHealth refreshToken={refreshToken} />
+            )}
           </section>
         </div>
       </main>

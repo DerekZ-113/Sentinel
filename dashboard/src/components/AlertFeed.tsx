@@ -5,43 +5,74 @@ import { ConfidenceBar, TypeBadge } from "./alertRowParts";
 
 const PAGE_SIZE = 20;
 
-export default function AlertFeed() {
+interface AlertFeedProps {
+  refreshToken?: number;
+}
+
+export default function AlertFeed({ refreshToken = 0 }: AlertFeedProps) {
   const [alerts, setAlerts] = useState<AlertRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const tableRef = useRef<HTMLDivElement>(null);
+  const hasLoadedRef = useRef(false);
+  const lastPageRef = useRef(page);
 
   useEffect(() => {
     let cancelled = false;
+    const isRefreshOnly = hasLoadedRef.current && lastPageRef.current === page;
+
     fetchAlerts(PAGE_SIZE, page * PAGE_SIZE)
       .then((data) => {
         if (cancelled) return;
         setAlerts(data.alerts);
         setTotal(data.total);
+        setError(null);
+        setRefreshError(null);
         setLoading(false);
-        tableRef.current?.scrollTo(0, 0);
+        hasLoadedRef.current = true;
+        lastPageRef.current = page;
+        if (!isRefreshOnly) {
+          tableRef.current?.scrollTo(0, 0);
+        }
       })
       .catch((err) => {
         if (cancelled) return;
-        setError(err.message);
+        const message = err instanceof Error ? err.message : "Unknown error";
+        if (isRefreshOnly) {
+          setRefreshError(`Refresh failed: ${message}`);
+        } else {
+          setError(message);
+        }
         setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [page]);
+  }, [page, refreshToken]);
+
+  function goToPage(nextPage: number) {
+    setLoading(true);
+    setError(null);
+    setRefreshError(null);
+    setPage(nextPage);
+  }
 
   function retry() {
     setLoading(true);
     setError(null);
+    setRefreshError(null);
     fetchAlerts(PAGE_SIZE, page * PAGE_SIZE)
       .then((data) => {
         setAlerts(data.alerts);
         setTotal(data.total);
         setLoading(false);
+        hasLoadedRef.current = true;
+        lastPageRef.current = page;
       })
       .catch((err) => {
-        setError(err.message);
+        const message = err instanceof Error ? err.message : "Unknown error";
+        setError(message);
         setLoading(false);
       });
   }
@@ -78,6 +109,12 @@ export default function AlertFeed() {
           {total.toLocaleString()} total
         </span>
       </div>
+
+      {refreshError && (
+        <p className="mb-3 rounded border border-yellow-700/40 bg-yellow-900/10 px-3 py-1.5 text-xs text-yellow-300/80">
+          {refreshError}
+        </p>
+      )}
 
       <div ref={tableRef} className="overflow-auto flex-1 overflow-x-auto">
         <table className="w-full text-sm min-w-[500px]">
@@ -155,7 +192,7 @@ export default function AlertFeed() {
       {/* Pagination */}
       <div className="flex items-center justify-between pt-3 border-t border-gray-700/50">
         <button
-          onClick={() => setPage((p) => p - 1)}
+          onClick={() => goToPage(page - 1)}
           disabled={page === 0}
           className="text-xs text-gray-400 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed border border-gray-700 px-3 py-1 rounded-lg transition-colors"
         >
@@ -165,7 +202,7 @@ export default function AlertFeed() {
           Page {page + 1} of {totalPages}
         </span>
         <button
-          onClick={() => setPage((p) => p + 1)}
+          onClick={() => goToPage(page + 1)}
           disabled={page >= totalPages - 1}
           className="text-xs text-gray-400 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed border border-gray-700 px-3 py-1 rounded-lg transition-colors"
         >

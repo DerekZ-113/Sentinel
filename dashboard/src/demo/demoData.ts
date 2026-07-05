@@ -22,6 +22,9 @@ export function useDemoBootstrap(): LiveBootstrap {
     health: DEMO_HEALTH,
     stats: snapshot.stats,
     error: null,
+    refreshError: null,
+    lastUpdatedAt: null,
     retry: noop,
+    refresh: noop,
   };
 }

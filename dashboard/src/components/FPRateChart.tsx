@@ -1,24 +1,56 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchFPOverTime } from "../services/api";
 import type { FPOverTimeResponse } from "../services/api";
 import FPRateChartView from "./FPRateChartView";
 
-export default function FPRateChart() {
+interface FPRateChartProps {
+  refreshToken?: number;
+}
+
+export default function FPRateChart({ refreshToken = 0 }: FPRateChartProps) {
   const [data, setData] = useState<FPOverTimeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
+    let cancelled = false;
+    const isRefresh = hasLoadedRef.current;
     fetchFPOverTime()
-      .then(setData)
-      .catch((err) => setError(err.message));
-  }, []);
+      .then((nextData) => {
+        if (cancelled) return;
+        setData(nextData);
+        setError(null);
+        setRefreshError(null);
+        hasLoadedRef.current = true;
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : "Unknown error";
+        if (isRefresh) {
+          setRefreshError(`Refresh failed: ${message}`);
+        } else {
+          setError(message);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [refreshToken]);
 
   function retry() {
     setError(null);
+    setRefreshError(null);
     setData(null);
+    hasLoadedRef.current = false;
     fetchFPOverTime()
-      .then(setData)
-      .catch((err) => setError(err.message));
+      .then((nextData) => {
+        setData(nextData);
+        setError(null);
+        hasLoadedRef.current = true;
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        setError(message);
+      });
   }
 
   if (error) {
@@ -43,5 +75,14 @@ export default function FPRateChart() {
     );
   }
 
-  return <FPRateChartView data={data} />;
+  return (
+    <div className="space-y-3">
+      {refreshError && (
+        <p className="rounded border border-yellow-700/40 bg-yellow-900/10 px-3 py-1.5 text-xs text-yellow-300/80">
+          {refreshError}
+        </p>
+      )}
+      <FPRateChartView data={data} />
+    </div>
+  );
 }

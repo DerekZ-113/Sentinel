@@ -2,7 +2,6 @@
 Tests for ModelService class in api/services/model_service.py.
 """
 
-import os
 import pytest
 import numpy as np
 import xgboost as xgb
@@ -27,23 +26,10 @@ class TestModelServiceInit:
         with pytest.raises(Exception):
             ModelService(model_dir="/nonexistent/path")
 
-    def test_fallback_scaler_builds(self, model_service):
-        """The scaler should exist (either loaded or fallback)."""
-        assert model_service.scaler is not None
-        assert hasattr(model_service.scaler, "transform")
-
-    def test_fallback_scaler_correct_shape(self):
-        """Build a fallback scaler and check its dimensions."""
-        from api.services.model_service import ModelService
-        ml_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-            "ml"
-        )
-        service = ModelService(model_dir=ml_dir)
-        # Scaler should handle 28 features
-        test_input = np.zeros((1, 28))
-        result = service.scaler.transform(test_input)
-        assert result.shape == (1, 28)
+    def test_no_scaler_attribute(self, model_service):
+        """The model consumes raw engineered features — a scaler would
+        reintroduce the training/serving-skew class of bugs."""
+        assert not hasattr(model_service, "scaler")
 
 
 class TestModelServicePredict:
@@ -81,10 +67,11 @@ class TestModelServicePredict:
                 assert result["confidence"] == pytest.approx(1.0 - result["raw_score"], abs=1e-6)
 
     def test_passenger_assist_likely_flagged(self, model_service, all_notification_payloads):
-        """passenger_assist with fp_rate=0 should almost always need intervention."""
+        """passenger_assist is 100% needs-intervention by construction — a
+        model that suppresses it (score below the serving threshold) is
+        broken, and this must fail CI rather than pass at 0.3."""
         result = model_service.predict(all_notification_payloads["passenger_assist"])
-        # This is a strong signal but not guaranteed by model
-        assert result["raw_score"] > 0.3  # Should have meaningful signal
+        assert result["raw_score"] > model_service.threshold
 
     def test_stuck_heavy_traffic(self, model_service):
         """Stuck in heavy traffic + downtown should have meaningful prediction."""

@@ -3,17 +3,29 @@ Sentinel Database Setup
 
 Creates TimescaleDB schema for AV fleet notification triage system.
 Supports 500-vehicle fleet with 6 notification types.
+
+Idempotent by default (CREATE IF NOT EXISTS) — safe to run on every
+container start. Destructive reset only with --reset.
+
+Usage:
+    python setup_database.py [--reset]
 """
 
+import argparse
 import os
 import logging
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
+from api.services.schema import (
+    VEHICLE_METRICS_DDL, VEHICLE_METRICS_INDEXES, VEHICLE_METRICS_HYPERTABLE,
+    PREDICTIONS_DDL, SEED_STATUS_DDL,
+)
+
 logger = logging.getLogger("sentinel.setup")
 
 
-def setup_database():
+def setup_database(reset: bool = False):
     """Initialize the database schema for Sentinel"""
 
     conn_params = {
@@ -30,71 +42,28 @@ def setup_database():
         conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
         cursor = conn.cursor()
 
-        # Drop old table for fresh start
-        logger.info("Dropping old table if exists...")
-        cursor.execute("DROP TABLE IF EXISTS vehicle_metrics;")
+        if reset:
+            # Destructive: drops the training-data telemetry table.
+            # Never run implicitly — an API container restart must not
+            # wipe a persistent volume.
+            logger.warning("--reset: dropping vehicle_metrics...")
+            cursor.execute("DROP TABLE IF EXISTS vehicle_metrics;")
 
-        # Create table with all context columns
-        logger.info("Creating vehicle_metrics table...")
-        cursor.execute("""
-            CREATE TABLE vehicle_metrics (
-                -- Timestamp and vehicle ID
-                time                    TIMESTAMPTZ NOT NULL,
-                vehicle_id              TEXT NOT NULL,
+        logger.info("Ensuring tables (idempotent)...")
+        cursor.execute(VEHICLE_METRICS_DDL)
+        cursor.execute(PREDICTIONS_DDL)
+        cursor.execute(SEED_STATUS_DDL)
 
-                -- Vehicle state
-                speed                   FLOAT NOT NULL,
-                latitude                FLOAT NOT NULL,
-                longitude               FLOAT NOT NULL,
-                status                  TEXT NOT NULL,
+        # Hypertable conversion is TimescaleDB-specific; skip gracefully on
+        # plain PostgreSQL (e.g. the CI service container)
+        try:
+            cursor.execute(VEHICLE_METRICS_HYPERTABLE)
+            logger.info("vehicle_metrics is a hypertable")
+        except psycopg2.Error as e:
+            logger.warning(f"Hypertable conversion skipped: {e}")
 
-                -- Road context
-                road_type               TEXT NOT NULL,
-                traffic_condition       TEXT NOT NULL,
-                construction_zone       TEXT,
-                expected_speed          FLOAT NOT NULL,
-
-                -- Notification info
-                notification_type       TEXT,
-                notification_subtype    TEXT,
-                needs_intervention      BOOLEAN DEFAULT FALSE,
-
-                -- Context for specific notification types
-                ev_distance             FLOAT,
-                pedestrian_density      FLOAT,
-                object_in_path          BOOLEAN,
-                time_since_stop         FLOAT
-            );
-        """)
-
-        # Convert to hypertable
-        logger.info("Converting to hypertable...")
-        cursor.execute("""
-            SELECT create_hypertable(
-                'vehicle_metrics',
-                'time',
-                if_not_exists => TRUE
-            );
-        """)
-
-        # Create indexes
         logger.info("Creating indexes...")
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_vehicle_time
-            ON vehicle_metrics (vehicle_id, time DESC);
-        """)
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_notification
-            ON vehicle_metrics (notification_type, time DESC);
-        """)
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_intervention
-            ON vehicle_metrics (needs_intervention, time DESC);
-        """)
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_context
-            ON vehicle_metrics (road_type, traffic_condition, time DESC);
-        """)
+        cursor.execute(VEHICLE_METRICS_INDEXES)
 
         logger.info("Database setup complete")
         cursor.execute("""
@@ -116,4 +85,8 @@ def setup_database():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
-    setup_database()
+    parser = argparse.ArgumentParser(description="Provision the Sentinel database schema")
+    parser.add_argument("--reset", action="store_true",
+                        help="Drop and recreate vehicle_metrics (DESTRUCTIVE)")
+    args = parser.parse_args()
+    setup_database(reset=args.reset)

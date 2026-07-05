@@ -6,7 +6,7 @@
 
 Sentinel is a full-stack system that reduces operator alert fatigue by learning which fleet notifications actually need human intervention. It combines an XGBoost classifier trained on 28 engineered features with a FastAPI inference service and a React monitoring dashboard, all containerized with Docker Compose.
 
-The model achieves a **64% reduction in false positives** and eliminates roughly **2 million unnecessary alerts daily** on a 500-vehicle fleet simulation.
+On a 500-vehicle fleet simulation, the model cuts the false-positive rate of surfaced alerts from 61% to 32% — a **47% reduction** that eliminates roughly **1.8 million false alarms per simulated day** — while catching 79% of real interventions. Metrics are measured on an event-grouped held-out test set (no leakage between train and test; see [Synthetic Data & Limitations](#synthetic-data--limitations)).
 
 ---
 
@@ -52,9 +52,9 @@ AV fleet operators are drowning in notifications:
 |-------------------|---------------|---------|
 | **Object Query** | "Is something blocking me?" | 83% are false positives (someone just walked by) |
 | **EV Alert** | "Emergency vehicle detected" | 70% are false positives (EV too far away) |
-| **Stuck** | "I can't move" | 61% are false positives (traffic or red light) |
+| **Stuck** | "I can't move" | 62% are false positives (traffic or red light) |
 
-**Baseline: 60.8% of all notifications are false positives.**
+**Baseline: 61.4% of all notifications are false positives.**
 
 When everything is an alert, nothing is an alert. Real issues get buried in noise.
 
@@ -70,49 +70,58 @@ The key insight is that context matters. A "stuck" notification during rush hour
 
 ## Results
 
+All metrics come from an **event-grouped 70/15/15 train/val/test split**: a notification event emits a stream of near-identical 5-second samples, and every sample of an event stays on one side of every split boundary. Early stopping selects on the validation set; the test set is untouched until final evaluation.
+
 ### Overall Performance
 
 | Metric | Baseline | Sentinel | Improvement |
 |--------|----------|----------|-------------|
-| False Positive Rate | 60.8% | 21.7% | -64% |
-| Precision | 39.2% | 78.3% | +100% |
-| Recall | 100% | 86.6% | - |
-| F1 Score | - | 82.2% | - |
-| ROC-AUC | - | 0.946 | - |
+| False Positive Rate | 61.4% | 32.2% | -47% |
+| Precision | 38.6% | 67.8% | +76% |
+| Recall | 100% | 79.3% | - |
+| F1 Score | - | 73.1% | - |
+| ROC-AUC | - | 0.864 | - |
+| PR-AUC | - | 0.810 | - |
 
 ### Per-Notification-Type Breakdown
 
-| Type | Baseline FP | Sentinel FP | Reduction |
-|------|-------------|-------------|-----------|
-| verification_request/object_query | 82.9% | 0.0% | -100% |
-| emergency_vehicle_alert | 70.0% | 0.0% | -100% |
-| speed_anomaly | 57.2% | 0.5% | -99% |
-| stuck | 61.1% | 38.0% | -38% |
-| impact_l0 | 47.5% | 42.7% | -10% |
-| verification_request/lane_mapping_verify | 30.7% | 28.9% | -6% |
-| verification_request/traffic_signal_verify | 9.6% | 9.4% | -2% |
-| passenger_assist | 0.0% | 0.0% | N/A |
+| Type | Baseline FP | Sentinel FP | Reduction | AUC |
+|------|-------------|-------------|-----------|-----|
+| verification_request/object_query | 83.2% | 42.9% | -48% | 0.874 |
+| speed_anomaly | 58.5% | 21.8% | -63% | 0.963 |
+| emergency_vehicle_alert | 70.1% | 46.7% | -33% | 0.856 |
+| stuck | 61.6% | 40.7% | -34% | 0.709 |
+| impact_l0 | 47.2% | 46.4% | -2% | 0.602 |
+| verification_request/lane_mapping_verify | 31.3% | 31.3% | 0% | 0.528 |
+| verification_request/traffic_signal_verify | 10.3% | 10.3% | 0% | 0.521 |
+| passenger_assist | 0.0% | 0.0% | N/A | - |
+
+The per-type AUC column is honest about where the signal lives: types whose labels depend on observable context (object_query, speed_anomaly, EV alerts) are learnable; types whose false positives are near-random in the generator (impact_l0, the low-volume verification subtypes) hover near coin-flip — the model correctly falls back to flagging most of them rather than inventing confidence.
 
 ### Operator Impact
 
-| Metric | Baseline | Sentinel |
-|--------|----------|----------|
-| Alerts per day | 3.8M | 1.7M |
-| False alarms per day | 2.3M | 360K |
-| Workload | 100% | 43% |
+Per simulated day, from full-dataset counts (26.7M notification samples / 1.03M notification events over 7 days — "alerts" here are 5-second notification samples, ≈146K distinct events per day):
 
-**2 million false alarms eliminated daily.**
+| Metric (per simulated day) | Baseline | Sentinel |
+|----------------------------|----------|----------|
+| Alert samples surfaced | 3.82M | 1.72M |
+| False alarms surfaced | 2.31M | 0.56M |
+| Real interventions caught | 1.50M | 1.17M |
+| Workload | 100% | 45% |
+
+**~1.8 million false alarms eliminated per simulated day.**
 
 ---
 
 ## Synthetic Data & Limitations
 
-All training and demo data comes from a fleet **simulation** (`fleet_data/generate_fleet_data.py`), not real vehicles. Labels are generated from hand-written context rules, which matters for how to read the results above:
+All training and demo data comes from a fleet **simulation** (`fleet_data/generate_fleet_data.py`), not real vehicles. The simulation is deliberately built so the model has to earn its numbers:
 
-- **Three notification types are deterministically encoded in the generator.** For `object_query`, the `object_in_path` feature is set equal to the label; `emergency_vehicle_alert` draws `ev_distance` from non-overlapping ranges per label; `speed_anomaly` uses non-overlapping speed multipliers per label. The near-0% FP rates for those types reflect the model recovering generator rules, not learned operational judgment.
-- **Metrics are optimistic.** The train/test split is per event row rather than per vehicle or time period, so the numbers above are an upper bound on this synthetic distribution — not expected real-world performance.
+- **Context signals are probabilistic and overlapping — labels are never encoded into features.** For `object_query`, an obstruction is present with p=0.85 when intervention is needed and p=0.15 when not; `emergency_vehicle_alert` draws distances from overlapping ranges (real: 10–250 m, false: 80–500 m); `speed_anomaly` uses overlapping speed multipliers (0.15–0.45 vs 0.35–0.65). The model has to learn a genuine decision boundary in every case.
+- **Splits are grouped by notification event.** One event yields ~26 near-identical 5-second samples sharing a label; grouping keeps siblings out of the test set, so the metrics measure generalization to unseen events, not memorization of event fingerprints. Early stopping uses a separate validation split.
+- **The remaining caveat is the simulation itself.** Labels come from hand-written context rules, so the model is partially recovering a hand-designed generative process. The numbers describe performance on this synthetic distribution, not expected real-world performance.
 
-The hosted demo dashboard replays this synthetic dataset on a loop; its "live" activity is a replay, not real fleet traffic.
+The hosted demo dashboard replays this synthetic dataset on a loop; its "live" activity is a replay, not real fleet traffic. Data generation is seeded (`--seed 42`) and reproducible end-to-end via `python -m ml.run_pipeline`.
 
 ---
 
@@ -157,6 +166,14 @@ The nginx layer in the dashboard container proxies `/api/*` requests to FastAPI,
 
 All endpoints return JSON. Full schema documentation is available at `/docs` when the API is running.
 
+### API authentication
+
+The `API_KEY` env var protects `POST /api/predict` — the only route that writes data. Read endpoints are intentionally open so the dashboard works without key distribution; this asymmetry is a deliberate demo-scale choice, not an oversight. With `API_KEY` empty (the default) auth is disabled entirely.
+
+Clients authenticate with an `X-API-Key` header. The dashboard build never embeds the key (a `VITE_*` var would be inlined into public JS) — if you deploy with auth enabled, inject the header at the nginx proxy layer instead (`proxy_set_header X-API-Key "...";` in the `/api/` location).
+
+Related knob: `ACCEPT_GROUND_TRUTH_LABELS=false` stops clients from supplying `needs_intervention_actual` (the demo seed script uses it to post simulation ground truth, which is what the accuracy/FP metrics measure).
+
 ---
 
 ## Dashboard
@@ -182,16 +199,16 @@ The interaction features built from operational patterns became the top predicto
 
 | Rank | Feature | Importance | Type |
 |------|---------|------------|------|
-| 1 | `object_query_moving` | 21.8% | Interaction |
-| 2 | `object_in_path` | 19.1% | Context |
-| 3 | `ev_far_away` | 7.0% | Interaction |
-| 4 | `ev_close` | 6.7% | Interaction |
-| 5 | `object_query_low_ped` | 6.5% | Interaction |
-| 6 | `is_stopped` | 5.9% | Context |
-| 7 | `ev_distance_normalized` | 5.9% | Context |
-| 8 | `notification_subtype_encoded` | 5.8% | Base |
-| 9 | `notification_type_encoded` | 5.2% | Base |
-| 10 | `object_query_high_ped` | 3.9% | Interaction |
+| 1 | `object_in_path` | 16.2% | Context |
+| 2 | `stuck_clear_road` | 13.8% | Interaction |
+| 3 | `notification_subtype_encoded` | 11.3% | Base |
+| 4 | `notification_type_encoded` | 9.8% | Base |
+| 5 | `object_query_moving` | 7.8% | Interaction |
+| 6 | `ev_close` | 4.3% | Interaction |
+| 7 | `object_query_high_ped` | 3.7% | Interaction |
+| 8 | `ev_distance_normalized` | 3.4% | Context |
+| 9 | `object_query_low_ped` | 3.4% | Interaction |
+| 10 | `impact_rough_road` | 3.3% | Interaction |
 
 6 of the top 10 features are interaction features - patterns I learned from working operations.
 
@@ -251,7 +268,10 @@ Added the 11 interaction features to help the VAE see the patterns. Still 1.05x 
 *The VAE code has been removed from the repository and the PyTorch dependency dropped. The experiments are documented here for the learning value.*
 
 **Attempt 3: XGBoost Classifier.**
-Supervised classification with interaction features. 64% FP reduction, 0.946 ROC-AUC. The interaction features became top predictors. For tabular data with categorical features, feature engineering often matters more than model architecture.
+Supervised classification with interaction features. The interaction features became top predictors. For tabular data with categorical features, feature engineering often matters more than model architecture.
+
+**Attempt 4: The honest retrain.**
+An adversarial review of my own pipeline found the first XGBoost result (64% FP reduction, 0.946 ROC-AUC) was inflated by two bugs: sibling samples of the same notification event were leaking across the random row-level train/test split, and three notification types had their labels deterministically encoded into generator features (`object_in_path` was literally set equal to the label). I rebuilt the generator with probabilistic, overlapping context signals, reconstructed event IDs, switched to an event-grouped train/val/test split with validation-based early stopping, and dropped a training/serving scaler mismatch by removing scaling entirely (XGBoost doesn't need it). The honest numbers — 47% FP reduction, 0.864 ROC-AUC — are lower and real, and finding the leak taught me more than the inflated result ever did.
 
 ### Phase 2: Production System
 
@@ -300,7 +320,7 @@ sentinel/
 │   ├── train_classifier.py      # XGBoost training and evaluation
 │   ├── run_pipeline.py          # End-to-end ML pipeline
 │   ├── xgboost_model.json       # Trained model (committed)
-│   └── xgboost_config.joblib    # Feature columns + threshold
+│   └── model_config.json        # Feature columns + threshold (plain JSON)
 ├── scripts/
 │   └── seed_demo.py             # Generate and seed 1,000 demo predictions
 ├── docker-compose.yml           # Full stack: DB + API + Dashboard
@@ -337,11 +357,11 @@ sentinel/
 |------|---------|-------------|------------------|
 | **verification_request** | object_query | "Is something in my path?" | 83% |
 | | traffic_signal_verify | "Is this signal correct?" | 10% |
-| | lane_mapping_verify | "Do lanes match my map?" | 31% |
+| | lane_mapping_verify | "Do lanes match my map?" | 30% |
 | **emergency_vehicle_alert** | - | "EV detected nearby" | 70% |
 | **stuck** | - | "I can't move forward" | 61% |
 | **speed_anomaly** | - | "I'm slower than expected" | 57% |
-| **impact_l0** | - | "Low-speed impact detected" | 48% |
+| **impact_l0** | - | "Low-speed impact detected" | 47% |
 | **passenger_assist** | - | "Rider requested help" | 0% (always real) |
 
 ---

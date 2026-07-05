@@ -1,17 +1,25 @@
-version: "3.8"
-
 services:
   # TimescaleDB
   db:
-    image: timescale/timescaledb:latest-pg14
+    # Pinned: a mutable `latest-pg14` over a persistent volume risks a
+    # surprise major-version bump against existing data files
+    image: timescale/timescaledb:2.19.3-pg14
     environment:
+      # Mirrors of the api-side DB_* knobs — without these, setting DB_NAME
+      # or DB_USER made the api wait forever on a database that was never
+      # created
+      POSTGRES_DB: ${DB_NAME:-postgres}
+      POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
     ports:
-      - "5432:5432"
+      # Loopback-only: never publish the database to the network.
+      # DB_PORT moves the HOST port; in-cluster traffic is always db:5432.
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
     volumes:
       - sentinel_data:/var/lib/postgresql/data
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-postgres}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -23,15 +31,25 @@ services:
       dockerfile: Dockerfile.api
     environment:
       DB_HOST: db
-      DB_PORT: ${DB_PORT:-5432}
+      DB_PORT: 5432  # in-cluster port is fixed; DB_PORT env moves only the host publish
       DB_NAME: ${DB_NAME:-postgres}
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-password}
+      API_KEY: ${API_KEY:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       db:
         condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
 
   # React Dashboard
   dashboard:
@@ -39,9 +57,11 @@ services:
       context: .
       dockerfile: Dockerfile.dashboard
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   sentinel_data:

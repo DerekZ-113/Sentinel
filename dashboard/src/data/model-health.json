@@ -1,27 +1,28 @@
 {
   "status": "healthy",
   "total_predictions": 1000,
-  "pct_flagged": 15.6,
-  "pct_suppressed": 84.4,
-  "avg_confidence": 0.8787,
-  "accuracy": 0.719,
+  "pct_flagged": 36.8,
+  "pct_suppressed": 63.2,
+  "avg_confidence": 0.7641,
+  "accuracy": 0.782,
   "confidence_buckets": {
-    "high": 627,
-    "medium": 193,
-    "low": 180
+    "high": 352,
+    "medium": 278,
+    "low": 370
   },
   "flagged_by_type": {
-    "impact_l0": 10,
-    "verification_request": 83,
-    "stuck": 47,
-    "passenger_assist": 16
+    "stuck": 137,
+    "speed_anomaly": 56,
+    "emergency_vehicle_alert": 24,
+    "verification_request": 121,
+    "passenger_assist": 18,
+    "impact_l0": 12
   },
   "suppressed_by_type": {
-    "stuck": 424,
-    "verification_request": 180,
-    "speed_anomaly": 169,
-    "emergency_vehicle_alert": 59,
-    "passenger_assist": 6,
-    "impact_l0": 6
+    "speed_anomaly": 87,
+    "stuck": 336,
+    "verification_request": 181,
+    "emergency_vehicle_alert": 27,
+    "impact_l0": 1
   }
 }

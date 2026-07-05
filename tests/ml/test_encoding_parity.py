@@ -1,13 +1,15 @@
 """
 CRITICAL: Encoding parity tests.
 
-Verifies that model_service.py and prepare_data.py both use the same encoding maps
-from ml/constants.py, and that the saved config.joblib matches.
+Verifies that model_service.py and prepare_data.py both use the same encoding
+maps from ml/constants.py, that the saved model_config.json matches, and that
+the two feature-engineering implementations produce identical vectors.
 """
 
+import json
 import os
-import pytest
-import joblib
+import numpy as np
+import pandas as pd
 
 from ml.constants import (
     ROAD_TYPE_MAP, TRAFFIC_MAP, CONSTRUCTION_MAP,
@@ -23,6 +25,11 @@ from api.services.model_service import (
 )
 
 ML_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "ml")
+
+
+def _load_config():
+    with open(os.path.join(ML_DIR, "model_config.json")) as f:
+        return json.load(f)
 
 
 class TestEncodingParity:
@@ -45,10 +52,47 @@ class TestEncodingParity:
 
     def test_feature_column_order_parity(self):
         """Config saved by train_classifier must match constants."""
-        config = joblib.load(os.path.join(ML_DIR, "xgboost_config.joblib"))
+        config = _load_config()
         assert config['feature_columns'] == FEATURE_COLUMNS
 
     def test_feature_count_is_28(self):
         assert len(FEATURE_COLUMNS) == 28
-        config = joblib.load(os.path.join(ML_DIR, "xgboost_config.joblib"))
+        config = _load_config()
         assert len(config['feature_columns']) == 28
+
+
+class TestFeatureVectorParity:
+    """The training path (prepare_data.engineer_features on a DataFrame) and
+    the serving path (model_service.engineer_features on a payload) must
+    produce the same 28-vector for the same notification. With no scaler
+    between them, any drift here reaches the model directly."""
+
+    PAYLOAD = {
+        "vehicle_id": "v001",
+        "speed": 3.2,
+        "expected_speed": 35.0,
+        "road_type": "downtown",
+        "traffic_condition": "heavy",
+        "construction_zone": "temporary",
+        "notification_type": "verification_request",
+        "notification_subtype": "object_query",
+        "ev_distance": None,
+        "pedestrian_density": 0.62,
+        "object_in_path": True,
+        "time_since_stop": 45.0,
+        "hour_of_day": 17,
+    }
+
+    def test_training_and_serving_vectors_match(self, model_service):
+        from ml.prepare_data import engineer_features
+
+        serving_vec = model_service.engineer_features(self.PAYLOAD)[0]
+
+        row = dict(self.PAYLOAD)
+        row["needs_intervention"] = True  # label; not a feature
+        df = engineer_features(pd.DataFrame([row]))
+        training_vec = df[FEATURE_COLUMNS].values[0].astype(float)
+
+        assert np.allclose(training_vec, serving_vec, atol=1e-9), (
+            f"training={training_vec}\nserving={serving_vec}"
+        )

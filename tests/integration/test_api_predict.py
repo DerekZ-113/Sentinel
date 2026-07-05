@@ -67,6 +67,62 @@ class TestPredictEndpoint:
         data = resp.json()
         assert "T" in data["timestamp"]  # ISO format
 
+    def test_infinity_rejected(self, client, sample_payload):
+        """JSON `1e999` parses to float('inf'); without allow_inf_nan=False
+        it produced a NaN feature, a confident garbage prediction, and a 500
+        on the jsonb write. It must be a 422 at validation."""
+        resp = client.post(
+            "/api/predict",
+            content='{"vehicle_id": "v1", "speed": 1e999, "expected_speed": 35,'
+                    ' "road_type": "downtown", "traffic_condition": "heavy",'
+                    ' "notification_type": "stuck"}',
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status_code == 422
+
+    def test_nan_rejected(self, client):
+        resp = client.post(
+            "/api/predict",
+            content='{"vehicle_id": "v1", "speed": NaN, "expected_speed": 35,'
+                    ' "road_type": "downtown", "traffic_condition": "heavy",'
+                    ' "notification_type": "stuck"}',
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status_code == 422
+
+    def test_absurd_speed_rejected(self, client, sample_payload):
+        sample_payload["speed"] = 900.0
+        resp = client.post("/api/predict", json=sample_payload)
+        assert resp.status_code == 422
+
+    def test_error_detail_does_not_leak_exception_text(self, client, mock_db_service, sample_payload):
+        """500 bodies carry a fixed message — exception text can contain
+        connection strings and internal paths."""
+        mock_db_service.store_prediction.side_effect = Exception(
+            "connection to server at db-internal-host failed: password xyz"
+        )
+        resp = client.post("/api/predict", json=sample_payload)
+        assert resp.status_code == 500
+        detail = resp.json()["detail"]
+        assert detail == "Prediction failed"
+        mock_db_service.store_prediction.side_effect = None
+
+
+class TestGroundTruthGate:
+
+    def test_ground_truth_accepted_by_default(self, client, mock_db_service, sample_payload):
+        sample_payload["needs_intervention_actual"] = True
+        client.post("/api/predict", json=sample_payload)
+        stored_payload = mock_db_service.store_prediction.call_args[0][0]
+        assert stored_payload["needs_intervention_actual"] is True
+
+    def test_ground_truth_stripped_when_disabled(self, client, mock_db_service, sample_payload, monkeypatch):
+        monkeypatch.setenv("ACCEPT_GROUND_TRUTH_LABELS", "false")
+        sample_payload["needs_intervention_actual"] = True
+        client.post("/api/predict", json=sample_payload)
+        stored_payload = mock_db_service.store_prediction.call_args[0][0]
+        assert stored_payload["needs_intervention_actual"] is None
+
 
 class TestPredictAuth:
 

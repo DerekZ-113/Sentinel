@@ -1,17 +1,26 @@
 """
-Sentinel Fleet Data Generator v2.0
+Sentinel Fleet Data Generator v2.1
 
 Simulates an autonomous vehicle fleet notification system with:
-- 500 vehicles operating over 7 days
+- 500 vehicles operating over 7 days (configurable via --vehicles/--days)
 - 6 notification types (verification_request, emergency_vehicle_alert, stuck, etc.)
-- Context-aware false positive labeling
+- Context-aware false positive labeling with probabilistic, overlapping
+  context signals (labels are never deterministically encoded in features)
 - Realistic traffic patterns
 
-Output: ~18M+ records in TimescaleDB
+Output (defaults): ~60.5M records in TimescaleDB, or ~27M with
+--notifications-only (persists only rows with an active notification —
+the subset ML training uses).
+
+Usage:
+    python fleet_data/generate_fleet_data.py [--vehicles 500] [--days 7]
+        [--seed 42] [--notifications-only] [--truncate]
 """
 
+import argparse
 import random
 import psycopg2
+from psycopg2.extras import execute_values
 from datetime import datetime, timedelta
 import signal
 import sys
@@ -105,22 +114,22 @@ def connect_to_database():
         sys.exit(1)
 
 
-def insert_batch(cursor, batch_data):
-    """Insert a batch of vehicle metrics into the database"""
+def insert_batch(conn, cursor, batch_data):
+    """Insert a batch of vehicle metrics. Rolls back and re-raises on failure —
+    a silent partial write would corrupt the training dataset."""
     try:
-        cursor.executemany("""
+        execute_values(cursor, """
             INSERT INTO vehicle_metrics (
                 time, vehicle_id, speed, latitude, longitude, status,
                 road_type, traffic_condition, construction_zone, expected_speed,
                 notification_type, notification_subtype, needs_intervention,
                 ev_distance, pedestrian_density, object_in_path, time_since_stop
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, batch_data)
-        return True
-    except Exception as e:
-        print(f"❌ Error inserting batch: {e}")
-        return False
+            VALUES %s
+        """, batch_data, page_size=1000)
+    except Exception:
+        conn.rollback()
+        raise
 
 
 # ============================================================================
@@ -347,17 +356,20 @@ class Vehicle:
         # Update pedestrian density
         self.pedestrian_density = get_pedestrian_density(self.road_type, hour)
         
+        # Context signals correlate with the label but never encode it
+        # deterministically — distributions overlap so the model has to learn
+        # a genuine decision boundary instead of recovering generator rules.
         if notif_type == 'emergency_vehicle_alert':
-            # EV distance affects whether it's relevant
+            # EV distance skews close for real alerts, far for FPs (overlap 80-250m)
             if self.needs_intervention:
-                self.ev_distance = random.uniform(10, 100)  # Close = real
+                self.ev_distance = random.uniform(10, 250)
             else:
-                self.ev_distance = random.uniform(150, 500)  # Far = FP
-                
+                self.ev_distance = random.uniform(80, 500)
+
         elif notif_type == 'verification_request' and self.notification_subtype == 'object_query':
-            # Object in path affects intervention need
-            self.object_in_path = self.needs_intervention
-            
+            # Obstruction usually present for real queries, occasionally for FPs
+            self.object_in_path = random.random() < (0.85 if self.needs_intervention else 0.15)
+
         else:
             self.ev_distance = None
             self.object_in_path = False
@@ -376,10 +388,12 @@ class Vehicle:
             if self.active_notification == 'stuck':
                 self.speed = 0
             elif self.active_notification == 'speed_anomaly':
+                # Overlapping multiplier ranges (0.35-0.45 shared) — see
+                # _set_notification_context on probabilistic label coupling
                 if self.needs_intervention:
-                    self.speed = self.expected_speed * random.uniform(0.2, 0.4)
+                    self.speed = self.expected_speed * random.uniform(0.15, 0.45)
                 else:
-                    self.speed = self.expected_speed * random.uniform(0.4, 0.6)
+                    self.speed = self.expected_speed * random.uniform(0.35, 0.65)
             elif self.active_notification == 'impact_l0':
                 self.speed = max(0, self.speed - 5)  # Slow down after impact
             elif self.active_notification == 'passenger_assist':
@@ -458,10 +472,41 @@ class Vehicle:
 # MAIN SIMULATION
 # ============================================================================
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Generate synthetic fleet telemetry")
+    parser.add_argument("--vehicles", type=int, default=500)
+    parser.add_argument("--days", type=int, default=7)
+    parser.add_argument("--seed", type=int, default=42,
+                        help="RNG seed for reproducible datasets")
+    parser.add_argument("--notifications-only", action="store_true",
+                        help="Persist only rows with an active notification "
+                             "(the subset ML training uses; ~45%% of samples)")
+    parser.add_argument("--truncate", action="store_true",
+                        help="Empty vehicle_metrics before generating (a rerun "
+                             "without this aborts rather than doubling rows)")
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
+    random.seed(args.seed)
+
     conn = connect_to_database()
     cursor = conn.cursor()
-    
+
+    # Rerun guard: appending a second simulation over the same window would
+    # silently double rows for every (time, vehicle_id)
+    cursor.execute("SELECT EXISTS (SELECT 1 FROM vehicle_metrics LIMIT 1)")
+    if cursor.fetchone()[0]:
+        if args.truncate:
+            print("🧹 Truncating existing vehicle_metrics data...")
+            cursor.execute("TRUNCATE vehicle_metrics")
+            conn.commit()
+        else:
+            print("❌ vehicle_metrics already has data. Rerun with --truncate "
+                  "to replace it (or setup_database.py --reset).")
+            sys.exit(1)
+
     # Graceful shutdown handler
     def signal_handler(sig, frame):
         print("\n🛑 Shutting down gracefully...")
@@ -469,27 +514,31 @@ def main():
         conn.close()
         print("✅ Database connection closed")
         sys.exit(0)
-    
+
     signal.signal(signal.SIGINT, signal_handler)
-    
+
     # Initialize fleet
-    num_vehicles = 500
-    num_days = 7
+    num_vehicles = args.vehicles
+    num_days = args.days
     vehicles = [Vehicle(f"vehicle_{i:03d}") for i in range(num_vehicles)]
 
     for vehicle in vehicles:
         vehicle.assign_initial_context()
 
     sim_time = datetime(2024, 12, 1, 7, 30, 0)
-    end_time = datetime(2024, 12, 1 + num_days, 7, 30, 0)
-    
-    # Calculate expected records
+    end_time = sim_time + timedelta(days=num_days)
+
+    # Calculate expected records (~45% of samples carry a notification)
     total_seconds = num_days * 24 * 60 * 60
     records_per_sample = num_vehicles
     sample_interval = 5
     expected_records = (total_seconds // sample_interval) * records_per_sample
-    
-    print(f"🚗 Simulating {num_vehicles} vehicles for {num_days} days")
+    if args.notifications_only:
+        expected_records = int(expected_records * 0.45)
+
+    mode = "notifications only" if args.notifications_only else "full telemetry"
+    print(f"🚗 Simulating {num_vehicles} vehicles for {num_days} days "
+          f"({mode}, seed {args.seed})")
     print(f"📊 Expected records: ~{expected_records:,}")
     print("Press Ctrl+C to stop\n")
     
@@ -504,6 +553,8 @@ def main():
         # Collect data every 5 simulated seconds
         if sim_time.second % 5 == 0:
             for vehicle in vehicles:
+                if args.notifications_only and vehicle.active_notification is None:
+                    continue
                 batch_data.append((
                     sim_time,
                     vehicle.vehicle_id,
@@ -526,10 +577,10 @@ def main():
 
         # Insert when batch reaches 5000 records
         if len(batch_data) >= 5000:
-            if insert_batch(cursor, batch_data):
-                conn.commit()
-                records_inserted += len(batch_data)
-                batch_data = []
+            insert_batch(conn, cursor, batch_data)
+            conn.commit()
+            records_inserted += len(batch_data)
+            batch_data = []
         
         sim_time += timedelta(seconds=1)
 
@@ -545,10 +596,10 @@ def main():
 
     # Insert remaining data
     if batch_data:
-        if insert_batch(cursor, batch_data):
-            conn.commit()
-            records_inserted += len(batch_data)
-            print(f"✅ Inserted final {len(batch_data)} records")
+        insert_batch(conn, cursor, batch_data)
+        conn.commit()
+        records_inserted += len(batch_data)
+        print(f"✅ Inserted final {len(batch_data)} records")
     
     cursor.close()
     conn.close()

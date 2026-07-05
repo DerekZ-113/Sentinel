@@ -149,3 +149,74 @@ class TestInteractionFeatures:
         df = _make_df(notification_type="impact_l0", road_type="residential")
         result = engineer_features(df)
         assert result["impact_rough_road"].iloc[0] == 1
+
+
+class TestAssignEventIds:
+    """Event reconstruction: contiguous ≤5s runs of the same
+    (vehicle, type, subtype) share an event_id; any break starts a new one."""
+
+    @staticmethod
+    def _frame(rows):
+        base = pd.Timestamp("2024-12-01 12:00:00")
+        return pd.DataFrame([
+            {
+                "vehicle_id": vid,
+                "time": base + pd.Timedelta(seconds=offset),
+                "notification_type": ntype,
+                "notification_subtype": subtype,
+            }
+            for vid, offset, ntype, subtype in rows
+        ])
+
+    def _ids(self, rows):
+        from ml.prepare_data import assign_event_ids
+        return assign_event_ids(self._frame(rows))["event_id"].tolist()
+
+    def test_contiguous_run_is_one_event(self):
+        ids = self._ids([
+            ("v1", 0, "stuck", None),
+            ("v1", 5, "stuck", None),
+            ("v1", 10, "stuck", None),
+        ])
+        assert len(set(ids)) == 1
+
+    def test_vehicle_change_starts_new_event(self):
+        ids = self._ids([
+            ("v1", 0, "stuck", None),
+            ("v1", 5, "stuck", None),
+            ("v2", 5, "stuck", None),
+        ])
+        assert ids[0] == ids[1]
+        assert ids[2] != ids[1]
+
+    def test_time_gap_starts_new_event(self):
+        ids = self._ids([
+            ("v1", 0, "stuck", None),
+            ("v1", 5, "stuck", None),
+            ("v1", 30, "stuck", None),  # >5s gap: notification ended, new one began
+        ])
+        assert ids[0] == ids[1]
+        assert ids[2] != ids[1]
+
+    def test_type_change_starts_new_event(self):
+        ids = self._ids([
+            ("v1", 0, "stuck", None),
+            ("v1", 5, "speed_anomaly", None),
+        ])
+        assert ids[0] != ids[1]
+
+    def test_subtype_change_starts_new_event(self):
+        ids = self._ids([
+            ("v1", 0, "verification_request", "object_query"),
+            ("v1", 5, "verification_request", "traffic_signal_verify"),
+        ])
+        assert ids[0] != ids[1]
+
+    def test_null_subtypes_treated_as_equal(self):
+        """Two contiguous rows with NaN subtype belong to the same event —
+        NaN != NaN semantics must not fragment every subtype-less event."""
+        ids = self._ids([
+            ("v1", 0, "stuck", None),
+            ("v1", 5, "stuck", None),
+        ])
+        assert len(set(ids)) == 1

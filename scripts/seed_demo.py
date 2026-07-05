@@ -12,7 +12,9 @@ Usage:
     python -m scripts.seed_demo
 """
 
+import argparse
 import os
+import random
 import sys
 import time
 import logging
@@ -94,12 +96,24 @@ def run_mini_simulation(num_vehicles=50, hours=12):
     return notifications
 
 
+MAX_LOGGED_FAILURES = 5
+
+
+def _log_failure(results, cause):
+    """Log the first few failure causes — a seed that fails 1000 times
+    with a swallowed reason is undebuggable."""
+    results['failure_causes'].append(cause)
+    if len(results['failure_causes']) <= MAX_LOGGED_FAILURES:
+        logger.warning(f"Predict request failed: {cause}")
+
+
 def post_predictions(notifications):
     """Send notifications to the API and track results."""
     results = {
         'success': 0,
         'failed': 0,
         'by_type': {},
+        'failure_causes': [],
     }
 
     total = len(notifications)
@@ -139,8 +153,10 @@ def post_predictions(notifications):
                     t['predicted_fp'] += 1
             else:
                 results['failed'] += 1
+                _log_failure(results, f"HTTP {resp.status_code}: {resp.text[:200]}")
         except Exception as e:
             results['failed'] += 1
+            _log_failure(results, repr(e))
 
         # Progress bar
         if (i + 1) % 50 == 0 or i == total - 1:
@@ -157,6 +173,12 @@ def post_predictions(notifications):
 
 def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+    parser = argparse.ArgumentParser(description="Seed the predictions table via the API")
+    parser.add_argument("--seed", type=int, default=42,
+                        help="RNG seed for a reproducible simulation")
+    args = parser.parse_args()
+    random.seed(args.seed)
+
     logger.info("Sentinel Seed Script")
 
     # Step 1: Check API
@@ -185,6 +207,15 @@ def main():
     for ntype in sorted(results['by_type'].keys()):
         t = results['by_type'][ntype]
         logger.info(f"  {ntype:<30} total={t['total']}  fp={t['fp']}  real={t['real']}")
+
+    # A 100%-failed seed must not exit 0 — the entrypoint gates its
+    # seed-complete marker on this exit code
+    if results['success'] == 0:
+        logger.error("Seeding failed: 0 predictions were stored.")
+        if results['failure_causes']:
+            logger.error(f"First failure: {results['failure_causes'][0]}")
+        sys.exit(1)
+
     logger.info(f"Dashboard ready at http://localhost:3000")
     logger.info(f"API docs at {API_BASE}/docs")
 

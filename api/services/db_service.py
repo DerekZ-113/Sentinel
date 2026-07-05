@@ -43,38 +43,17 @@ class DatabaseService:
         self.connection_pool.putconn(conn)
 
     def _ensure_predictions_table(self) -> None:
-        """Create predictions table if it doesn't exist."""
+        """Create predictions table if it doesn't exist.
+
+        DDL comes from api.services.schema — the single source shared with
+        setup_database.py, so the two provisioning paths can't drift apart.
+        """
+        from api.services.schema import PREDICTIONS_DDL
+
         conn = self._get_conn()
         try:
             cursor = conn.cursor()
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS predictions (
-                    id                          SERIAL PRIMARY KEY,
-                    time                        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    vehicle_id                  TEXT NOT NULL,
-                    notification_type           TEXT NOT NULL,
-                    notification_subtype        TEXT,
-                    needs_intervention_predicted BOOLEAN NOT NULL,
-                    needs_intervention_actual    BOOLEAN,
-                    confidence                  FLOAT NOT NULL,
-                    raw_score                   FLOAT NOT NULL,
-                    speed                       FLOAT,
-                    expected_speed              FLOAT,
-                    road_type                   TEXT,
-                    traffic_condition           TEXT,
-                    construction_zone           TEXT,
-                    pedestrian_density          FLOAT,
-                    ev_distance                 FLOAT,
-                    object_in_path              BOOLEAN,
-                    time_since_stop             FLOAT,
-                    payload_json                JSONB
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_predictions_time
-                    ON predictions (time DESC);
-                CREATE INDEX IF NOT EXISTS idx_predictions_type
-                    ON predictions (notification_type, time DESC);
-            """)
+            cursor.execute(PREDICTIONS_DDL)
             conn.commit()
             cursor.close()
         finally:
@@ -147,10 +126,15 @@ class DatabaseService:
                 where_clause = "WHERE notification_type = %s"
                 params.append(notification_type)
 
-            # Get total count
+            # Total count, capped: an unbounded COUNT(*) scans the whole
+            # table on every page request. Pagination beyond 10k rows isn't
+            # a dashboard use case, so stop counting there.
+            count_cap = 10_000
             cursor.execute(
-                f"SELECT COUNT(*) as cnt FROM predictions {where_clause}",
-                params
+                f"SELECT COUNT(*) as cnt FROM ("
+                f"SELECT 1 FROM predictions {where_clause} LIMIT %s"
+                f") capped",
+                params + [count_cap]
             )
             total = cursor.fetchone()['cnt']
 
@@ -220,13 +204,29 @@ class DatabaseService:
             if fp_row['predicted_positive'] and fp_row['predicted_positive'] > 0:
                 fp_rate = fp_row['false_positives'] / fp_row['predicted_positive']
 
-            # Per-type breakdown
+            # Per-type breakdown — fp_rate/accuracy computed here so the
+            # live API matches the TypeStats schema (and the demo fixtures)
             cursor.execute("""
                 SELECT
                     notification_type,
                     COUNT(*) as total,
                     COUNT(*) FILTER (WHERE needs_intervention_predicted = true) as flagged,
-                    COUNT(*) FILTER (WHERE needs_intervention_predicted = false) as suppressed
+                    COUNT(*) FILTER (WHERE needs_intervention_predicted = false) as suppressed,
+                    COUNT(*) FILTER (
+                        WHERE needs_intervention_predicted = true
+                        AND needs_intervention_actual = false
+                    ) as false_positives,
+                    COUNT(*) FILTER (
+                        WHERE needs_intervention_predicted = true
+                        AND needs_intervention_actual IS NOT NULL
+                    ) as flagged_with_truth,
+                    COUNT(*) FILTER (
+                        WHERE needs_intervention_actual IS NOT NULL
+                        AND needs_intervention_predicted = needs_intervention_actual
+                    ) as correct,
+                    COUNT(*) FILTER (
+                        WHERE needs_intervention_actual IS NOT NULL
+                    ) as with_ground_truth
                 FROM predictions
                 WHERE time >= %s
                 GROUP BY notification_type
@@ -248,6 +248,14 @@ class DatabaseService:
                         'total': t['total'],
                         'flagged': t['flagged'],
                         'suppressed': t['suppressed'],
+                        'fp_rate': (
+                            round(t['false_positives'] / t['flagged_with_truth'], 4)
+                            if t['flagged_with_truth'] else None
+                        ),
+                        'accuracy': (
+                            round(t['correct'] / t['with_ground_truth'], 4)
+                            if t['with_ground_truth'] else None
+                        ),
                     }
                     for t in by_type
                 ],
@@ -269,6 +277,14 @@ class DatabaseService:
                     COUNT(*) FILTER (WHERE needs_intervention_predicted = false) as suppressed,
                     AVG(confidence) as avg_confidence,
                     COUNT(*) FILTER (
+                        WHERE needs_intervention_predicted = true
+                        AND needs_intervention_actual = false
+                    ) as false_positives,
+                    COUNT(*) FILTER (
+                        WHERE needs_intervention_predicted = true
+                        AND needs_intervention_actual IS NOT NULL
+                    ) as flagged_with_truth,
+                    COUNT(*) FILTER (
                         WHERE needs_intervention_actual IS NOT NULL
                         AND needs_intervention_predicted = needs_intervention_actual
                     ) as correct,
@@ -286,12 +302,17 @@ class DatabaseService:
             if row['with_ground_truth'] and row['with_ground_truth'] > 0:
                 accuracy = row['correct'] / row['with_ground_truth']
 
+            fp_rate = None
+            if row['flagged_with_truth'] and row['flagged_with_truth'] > 0:
+                fp_rate = round(row['false_positives'] / row['flagged_with_truth'], 4)
+
             return {
                 'notification_type': notification_type,
                 'total': row['total'],
                 'flagged': row['flagged'],
                 'suppressed': row['suppressed'],
-                'avg_confidence': float(row['avg_confidence']) if row['avg_confidence'] else None,
+                'avg_confidence': float(row['avg_confidence']) if row['avg_confidence'] is not None else None,
+                'fp_rate': fp_rate,
                 'accuracy': accuracy,
             }
         finally:
@@ -392,65 +413,74 @@ class DatabaseService:
     # ========================================================================
 
     def get_fp_over_time(self, hours: int = 24, buckets: int = 12) -> dict:
-        """Get FP rate bucketed over time."""
+        """Get FP rate bucketed over time.
+
+        Bucketing happens in one SQL aggregation pass — fetching every row
+        and bucketing in Python scaled with table size on every request.
+        """
         conn = self._get_conn()
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             since = datetime.now(timezone.utc) - timedelta(hours=hours)
+            bucket_seconds = hours * 3600 / buckets
 
+            # LEAST() clamps rows landing exactly on the window's end into
+            # the final bucket (same behavior as the previous Python loop)
             cursor.execute("""
-                SELECT time, needs_intervention_predicted, needs_intervention_actual
+                SELECT
+                    LEAST(
+                        FLOOR(EXTRACT(EPOCH FROM (time - %s)) / %s)::int,
+                        %s - 1
+                    ) as bucket_idx,
+                    COUNT(*) as total,
+                    COUNT(*) FILTER (WHERE needs_intervention_predicted = true) as flagged,
+                    COUNT(*) FILTER (
+                        WHERE needs_intervention_predicted = true
+                        AND needs_intervention_actual = false
+                    ) as false_positives,
+                    COUNT(*) FILTER (
+                        WHERE needs_intervention_predicted = true
+                        AND needs_intervention_actual IS NOT NULL
+                    ) as flagged_with_truth,
+                    COUNT(*) FILTER (
+                        WHERE needs_intervention_actual IS NOT NULL
+                        AND needs_intervention_predicted = needs_intervention_actual
+                    ) as correct,
+                    COUNT(*) FILTER (
+                        WHERE needs_intervention_actual IS NOT NULL
+                    ) as with_truth
                 FROM predictions
                 WHERE time >= %s
-                ORDER BY time
-            """, (since,))
-            rows = cursor.fetchall()
+                GROUP BY bucket_idx
+            """, (since, bucket_seconds, buckets, since))
+            by_idx = {row['bucket_idx']: dict(row) for row in cursor.fetchall()}
             cursor.close()
 
-            # Build bucket boundaries
             bucket_interval = timedelta(hours=hours / buckets)
-            bucket_starts = [since + i * bucket_interval for i in range(buckets)]
-
-            # Assign rows to buckets
-            bucket_data: list[list[dict]] = [[] for _ in range(buckets)]
-            for row in rows:
-                for i in range(buckets - 1, -1, -1):
-                    if row['time'] >= bucket_starts[i]:
-                        bucket_data[i].append(dict(row))
-                        break
-
-            # Compute metrics per bucket
             result_buckets = []
-            for i, start in enumerate(bucket_starts):
-                items = bucket_data[i]
-                total = len(items)
-                flagged = sum(1 for r in items if r['needs_intervention_predicted'])
-                suppressed = total - flagged
-
-                # FP rate among flagged with ground truth
-                flagged_with_truth = [r for r in items
-                                      if r['needs_intervention_predicted']
-                                      and r['needs_intervention_actual'] is not None]
-                if flagged_with_truth:
-                    fp = sum(1 for r in flagged_with_truth if not r['needs_intervention_actual'])
-                    fp_rate = round(fp / len(flagged_with_truth), 4)
+            for i in range(buckets):
+                start = since + i * bucket_interval
+                row = by_idx.get(i)
+                if row:
+                    total = row['total']
+                    flagged = row['flagged']
+                    fp_rate = (
+                        round(row['false_positives'] / row['flagged_with_truth'], 4)
+                        if row['flagged_with_truth'] else None
+                    )
+                    accuracy = (
+                        round(row['correct'] / row['with_truth'], 4)
+                        if row['with_truth'] else None
+                    )
                 else:
-                    fp_rate = None
-
-                # Accuracy
-                with_truth = [r for r in items if r['needs_intervention_actual'] is not None]
-                if with_truth:
-                    correct = sum(1 for r in with_truth
-                                  if r['needs_intervention_predicted'] == r['needs_intervention_actual'])
-                    accuracy = round(correct / len(with_truth), 4)
-                else:
-                    accuracy = None
+                    total = flagged = 0
+                    fp_rate = accuracy = None
 
                 result_buckets.append({
                     'time': start.isoformat(),
                     'total': total,
                     'flagged': flagged,
-                    'suppressed': suppressed,
+                    'suppressed': total - flagged,
                     'fp_rate': fp_rate,
                     'accuracy': accuracy,
                 })
@@ -467,9 +497,14 @@ class DatabaseService:
     # ========================================================================
 
     def health_check(self) -> bool:
-        """Simple connectivity check."""
-        conn = self._get_conn()
+        """Simple connectivity check.
+
+        Connection acquisition happens INSIDE the try: during a real outage
+        getconn() itself raises, and /health must report degraded, not 500.
+        """
+        conn = None
         try:
+            conn = self._get_conn()
             cursor = conn.cursor()
             cursor.execute("SELECT 1")
             cursor.close()
@@ -477,7 +512,8 @@ class DatabaseService:
         except Exception:
             return False
         finally:
-            self._put_conn(conn)
+            if conn is not None:
+                self._put_conn(conn)
 
     def close(self) -> None:
         """Close all connections."""

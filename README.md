@@ -166,6 +166,14 @@ The nginx layer in the dashboard container proxies `/api/*` requests to FastAPI,
 
 All endpoints return JSON. Full schema documentation is available at `/docs` when the API is running.
 
+### API authentication
+
+The `API_KEY` env var protects `POST /api/predict` — the only route that writes data. Read endpoints are intentionally open so the dashboard works without key distribution; this asymmetry is a deliberate demo-scale choice, not an oversight. With `API_KEY` empty (the default) auth is disabled entirely.
+
+Clients authenticate with an `X-API-Key` header. The dashboard build never embeds the key (a `VITE_*` var would be inlined into public JS) — if you deploy with auth enabled, inject the header at the nginx proxy layer instead (`proxy_set_header X-API-Key "...";` in the `/api/` location).
+
+Related knob: `ACCEPT_GROUND_TRUTH_LABELS=false` stops clients from supplying `needs_intervention_actual` (the demo seed script uses it to post simulation ground truth, which is what the accuracy/FP metrics measure).
+
 ---
 
 ## Dashboard

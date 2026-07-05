@@ -246,16 +246,12 @@ export async function postPredict(
   payload: NotificationPayload
 ): Promise<PredictionResponse> {
   if (DEMO_MODE) return Promise.resolve(demoPredict(payload));
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  const apiKey = import.meta.env.VITE_API_KEY;
-  if (apiKey) {
-    headers["X-API-Key"] = apiKey;
-  }
+  // No client-side API key: a VITE_* var would be inlined into the public
+  // JS bundle. Auth-enabled deployments inject X-API-Key at the nginx
+  // proxy layer instead (see README "API authentication").
   return fetchJson<PredictionResponse>(`${API_BASE}/predict`, {
     method: "POST",
-    headers,
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 }

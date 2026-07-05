@@ -108,6 +108,22 @@ class TestPredictEndpoint:
         mock_db_service.store_prediction.side_effect = None
 
 
+class TestGroundTruthGate:
+
+    def test_ground_truth_accepted_by_default(self, client, mock_db_service, sample_payload):
+        sample_payload["needs_intervention_actual"] = True
+        client.post("/api/predict", json=sample_payload)
+        stored_payload = mock_db_service.store_prediction.call_args[0][0]
+        assert stored_payload["needs_intervention_actual"] is True
+
+    def test_ground_truth_stripped_when_disabled(self, client, mock_db_service, sample_payload, monkeypatch):
+        monkeypatch.setenv("ACCEPT_GROUND_TRUTH_LABELS", "false")
+        sample_payload["needs_intervention_actual"] = True
+        client.post("/api/predict", json=sample_payload)
+        stored_payload = mock_db_service.store_prediction.call_args[0][0]
+        assert stored_payload["needs_intervention_actual"] is None
+
+
 class TestPredictAuth:
 
     def test_auth_skipped_when_no_key(self, client, sample_payload):

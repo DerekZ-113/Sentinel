@@ -11,12 +11,14 @@ uvicorn api.main:app --reload --port 8000
 cd dashboard && npm run dev        # Vite dev server on :3000 (proxies /api + /health to :8000)
 
 # Tests
-pytest tests/ -v                   # 240 Python tests
-cd dashboard && npm test           # 108 Vitest tests
+pytest tests/ -v                   # ~285 Python tests (+7 opt-in real-SQL)
+SENTINEL_DB_TESTS=1 pytest tests/db/  # real-SQL suite (needs a scratch DB; truncates predictions)
+cd dashboard && npm test           # ~120 Vitest tests
 cd dashboard && npm run lint       # ESLint
+cd dashboard && npx tsc -b         # type check (CI-gated)
 
 # Coverage
-pytest tests/ --cov=api --cov=fleet_data --cov-report=term-missing
+pytest tests/ --cov=api --cov=fleet_data --cov=ml --cov-report=term-missing
 ```
 
 ## Architecture
@@ -39,13 +41,14 @@ Services (`ModelService`, `DatabaseService`) are module-level singletons in `api
 
 ## Environment Variables
 
-See `.env.example`. Key vars: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `CORS_ORIGINS` (comma-separated), `API_KEY` (empty = no auth), `LOG_LEVEL` (default INFO).
+See `.env.example`. Key vars: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `CORS_ORIGINS` (comma-separated), `API_KEY` (empty = no auth), `LOG_LEVEL` (default INFO), `ACCEPT_GROUND_TRUTH_LABELS` (default true — set false to strip client-supplied `needs_intervention_actual`). No dotenv loader — Compose reads `.env`; local workflows export vars. Docker/CI install pinned deps from `requirements.lock` (regen instructions in its header); macOS local dev uses `requirements.txt`.
 
 ## Testing
 
-- Python: pytest with fixtures in `tests/conftest.py`. `model_service` fixture is session-scoped (loads real XGBoost model once). `client` fixture uses real model + mocked DB (no real database needed).
+- Python: pytest with fixtures in `tests/conftest.py`. `model_service` fixture is session-scoped (loads real XGBoost model once). `client` fixture uses real model + mocked DB (no real database needed) and copies the real app's exception handlers.
+- `tests/db/` runs real SQL against a scratch database — opt-in via `SENTINEL_DB_TESTS=1` (CI provides a TimescaleDB service container; it TRUNCATEs `predictions`).
 - Dashboard: Vitest + React Testing Library. Mock `globalThis.fetch` in tests.
-- CI: GitHub Actions on push/PR to main — runs pytest + vitest + eslint.
+- CI: GitHub Actions on push/PR to main — pytest (with coverage + real-SQL suite, Python 3.11 matching the image) + vitest + tsc + eslint.
 
 ## Gotchas
 

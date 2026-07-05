@@ -14,6 +14,14 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_api_key(monkeypatch):
+    """A developer's exported API_KEY must not fail unrelated tests —
+    auth.py reads the env var per-call, so tests assuming open auth break
+    if the shell happens to have one set."""
+    monkeypatch.delenv("API_KEY", raising=False)
+
+
 # ============================================================================
 # SAMPLE PAYLOADS
 # ============================================================================
@@ -186,6 +194,12 @@ def client(model_service, mock_db_service):
     # Copy routes and middleware from the real app
     for route in main_module.app.routes:
         test_app.routes.append(route)
+
+    # Copy exception handlers — without them, unhandled errors produce a
+    # different 500 body in tests than in production, so error-path tests
+    # would assert against behavior the real app doesn't have
+    for exc_class, handler in main_module.app.exception_handlers.items():
+        test_app.add_exception_handler(exc_class, handler)
 
     # Copy middleware
     from fastapi.middleware.cors import CORSMiddleware

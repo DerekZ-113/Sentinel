@@ -7,12 +7,14 @@ Usage:
     uvicorn api.main:app --reload --port 8000
 """
 
+import math
 import os
 import time
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -94,13 +96,39 @@ app.add_middleware(
 )
 
 
-# Generic exception handler
+# Generic exception handler — fixed detail string: exception text can carry
+# connection strings, hostnames, and internal paths (full detail is logged)
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
     logger.exception("Unhandled exception")
     return JSONResponse(
         status_code=500,
-        content={"detail": f"Internal server error: {str(exc)}"},
+        content={"detail": "Internal server error"},
+    )
+
+
+def _finite_safe(value):
+    """Replace non-finite floats (inf/nan) with strings, recursively.
+
+    Validation errors echo the offending input back to the client, but a
+    rejected `1e999` payload puts float('inf') in the error detail — which
+    the strict JSON response encoder refuses, turning a correct 422 into
+    a 500."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {k: _finite_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_finite_safe(v) for v in value]
+    return value
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    from fastapi.encoders import jsonable_encoder
+    return JSONResponse(
+        status_code=422,
+        content={"detail": _finite_safe(jsonable_encoder(exc.errors()))},
     )
 
 
@@ -117,8 +145,9 @@ app.include_router(alerts_router, prefix="/api", tags=["Alerts"])
 app.include_router(stats_router, prefix="/api", tags=["Stats"])
 
 
+# Plain `def`: health_check() does sync DB I/O — threadpool, not event loop
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
-async def health():
+def health():
     """Check service health: model loaded, DB connected."""
     db_ok = False
     if _db_service:

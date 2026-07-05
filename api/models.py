@@ -58,23 +58,26 @@ class NotificationSubtype(str, Enum):
 class NotificationPayload(BaseModel):
     """Incoming notification from fleet"""
     vehicle_id: str
-    speed: float = Field(ge=0, description="Current speed in mph")
-    expected_speed: float = Field(ge=0, description="Expected speed for context")
+    speed: float = Field(ge=0, le=250, description="Current speed in mph")
+    expected_speed: float = Field(ge=0, le=250, description="Expected speed for context")
     road_type: RoadType
     traffic_condition: TrafficCondition
     construction_zone: ConstructionZone = ConstructionZone.none
     notification_type: NotificationType
     notification_subtype: Optional[NotificationSubtype] = None
-    ev_distance: Optional[float] = Field(None, ge=0, description="Distance to EV in meters")
+    ev_distance: Optional[float] = Field(None, ge=0, le=10_000, description="Distance to EV in meters")
     pedestrian_density: float = Field(0.0, ge=0.0, le=1.0)
     object_in_path: bool = False
-    time_since_stop: float = Field(0.0, ge=0)
+    time_since_stop: float = Field(0.0, ge=0, le=86_400)
     hour_of_day: Optional[int] = Field(None, ge=0, le=23)
 
     # Optional: ground truth for evaluation (seed script provides this)
     needs_intervention_actual: Optional[bool] = None
 
-    model_config = {"use_enum_values": True}
+    # allow_inf_nan=False: without it, JSON `1e999` becomes float('inf'),
+    # speed_ratio turns NaN, the model returns confident garbage, and the
+    # jsonb write 500s on the non-standard Infinity token
+    model_config = {"use_enum_values": True, "allow_inf_nan": False}
 
 
 # ============================================================================
@@ -122,6 +125,7 @@ class TypeStats(BaseModel):
     suppressed: int
     fp_rate: Optional[float] = None
     accuracy: Optional[float] = None
+    avg_confidence: Optional[float] = None
 
 
 class StatsResponse(BaseModel):

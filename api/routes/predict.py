@@ -16,8 +16,10 @@ logger = logging.getLogger("sentinel.api")
 router = APIRouter()
 
 
+# Plain `def` (not async): FastAPI runs sync handlers in its threadpool,
+# so the blocking psycopg2/XGBoost work can't stall the event loop.
 @router.post("/predict", response_model=PredictionResponse, dependencies=[Depends(verify_api_key)])
-async def predict(payload: NotificationPayload):
+def predict(payload: NotificationPayload):
     """Run a notification through the model and return prediction."""
     from api.main import get_model_service, get_db_service
 
@@ -37,6 +39,8 @@ async def predict(payload: NotificationPayload):
             raw_score=prediction['raw_score'],
             timestamp=datetime.now(timezone.utc),
         )
-    except Exception as e:
+    except Exception:
+        # Full detail goes to the server log only — exception text can carry
+        # connection strings and internal paths
         logger.exception("Prediction failed")
-        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Prediction failed")

@@ -14,7 +14,7 @@ import os
 import logging
 import numpy as np
 import xgboost as xgb
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger("sentinel.model")
 
@@ -75,7 +75,9 @@ class ModelService:
         time_since_stop = payload.get('time_since_stop', 0.0)
         hour_of_day = payload.get('hour_of_day')
         if hour_of_day is None:
-            hour_of_day = datetime.now().hour
+            # UTC, not server-local: training timestamps are UTC, and a
+            # server's TZ must not silently shift the hour feature
+            hour_of_day = datetime.now(timezone.utc).hour
 
         # --- Speed features ---
         speed_ratio = speed / (expected_speed + 1)

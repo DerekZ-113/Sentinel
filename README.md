@@ -105,6 +105,17 @@ The key insight is that context matters. A "stuck" notification during rush hour
 
 ---
 
+## Synthetic Data & Limitations
+
+All training and demo data comes from a fleet **simulation** (`fleet_data/generate_fleet_data.py`), not real vehicles. Labels are generated from hand-written context rules, which matters for how to read the results above:
+
+- **Three notification types are deterministically encoded in the generator.** For `object_query`, the `object_in_path` feature is set equal to the label; `emergency_vehicle_alert` draws `ev_distance` from non-overlapping ranges per label; `speed_anomaly` uses non-overlapping speed multipliers per label. The near-0% FP rates for those types reflect the model recovering generator rules, not learned operational judgment.
+- **Metrics are optimistic.** The train/test split is per event row rather than per vehicle or time period, so the numbers above are an upper bound on this synthetic distribution — not expected real-world performance.
+
+The hosted demo dashboard replays this synthetic dataset on a loop; its "live" activity is a replay, not real fleet traffic.
+
+---
+
 ## Architecture
 
 ```
@@ -129,7 +140,7 @@ docker-compose up
 +------------------------------------------------------------+
 ```
 
-The nginx layer in the dashboard container proxies `/api/*` requests to FastAPI, so the frontend and backend share the same origin in production. During development, CORS is configured for `localhost:5173` (Vite dev server).
+The nginx layer in the dashboard container proxies `/api/*` requests to FastAPI, so the frontend and backend share the same origin in production. During development, the Vite dev server (also on `localhost:3000`) proxies `/api` and `/health` to the backend on `:8000`, so the frontend and backend share an origin there too.
 
 ---
 
@@ -150,13 +161,18 @@ All endpoints return JSON. Full schema documentation is available at `/docs` whe
 
 ## Dashboard
 
-The React dashboard has five panels:
+The React dashboard is an above-the-fold operations console:
 
 - **Overview Cards** - Total alerts, flagged count, suppressed count, and model FP rate at a glance.
-- **Alert Feed** - Scrollable table of recent notifications showing vehicle ID, type, model prediction, confidence score, and ground truth when available.
-- **Type Breakdown** - Horizontal bar chart comparing flagged vs suppressed counts for each notification type.
-- **Simulate** - Interactive form where you can input notification parameters and get a real-time prediction from the API. Useful for testing edge cases.
+- **Alert Feed** - Scrollable table of recent notifications showing vehicle ID, type, model prediction, and confidence score. In demo mode this is a live stream: click any alert for a detail drawer with the model score vs. threshold, context signals, telemetry, a sector mini-map, and the vehicle's recent history.
+- **Type Breakdown** - Stacked bar chart comparing flagged vs suppressed counts for each notification type.
+- **FP Rate Trend** - False positive rate and accuracy over time (rolling 30-minute window in demo mode).
+- **Simulate** - Interactive form where you can input notification parameters and get a prediction. In demo mode it opens as a drawer and injects the result into the live stream as a manual alert.
 - **Model Health** - Confidence distribution (high/medium/low buckets), prediction split (flagged vs suppressed), accuracy, and a status indicator (healthy/warning/degraded).
+
+### Demo mode
+
+The hosted demo (`VITE_DEMO_MODE=true`) has no backend: a replay engine deals the 1,000 bundled synthetic alerts onto a live timeline (Poisson-spaced, with bursts), and every surface — counters, charts, feed, model health — derives from that single stream. A status bar shows the honest fleet-reporting count and a dismissible synthetic-replay notice. Live-API builds tree-shake the entire demo layer, fixtures included.
 
 ---
 
@@ -311,7 +327,7 @@ sentinel/
 - **ML:** XGBoost, scikit-learn, NumPy
 - **Database:** TimescaleDB (time-series optimized PostgreSQL)
 - **Infrastructure:** Docker Compose, nginx reverse proxy, multi-stage builds
-- **Testing:** pytest (240+ tests), Vitest (42+ tests), GitHub Actions CI
+- **Testing:** pytest (240+ tests), Vitest (100+ tests), GitHub Actions CI
 
 ---
 

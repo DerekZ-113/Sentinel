@@ -28,10 +28,12 @@ from fleet_data.generate_fleet_data import Vehicle
 from api.services.model_service import ModelService
 
 TARGET_NOTIFICATIONS = 1000
+NUM_VEHICLES = 50
+SIM_HOURS = 12
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dashboard", "src", "data")
 
 
-def run_simulation(num_vehicles=50, hours=12):
+def run_simulation(num_vehicles=NUM_VEHICLES, hours=SIM_HOURS):
     """Run a mini fleet simulation and collect notification events."""
     random.seed(42)  # Reproducible data
 
@@ -64,6 +66,9 @@ def run_simulation(num_vehicles=50, hours=12):
                     'hour_of_day': sim_time.hour,
                     'needs_intervention_actual': vehicle.needs_intervention,
                     '_sim_time': sim_time.isoformat() + 'Z',
+                    # Underscore-prefixed: excluded from the model payload in predict_all
+                    '_latitude': round(vehicle.latitude, 5),
+                    '_longitude': round(vehicle.longitude, 5),
                 })
 
         sim_time += timedelta(seconds=1)
@@ -94,6 +99,15 @@ def predict_all(notifications, model_service):
             'speed': notif['speed'],
             'road_type': notif['road_type'],
             'traffic_condition': notif['traffic_condition'],
+            'expected_speed': notif['expected_speed'],
+            'construction_zone': notif['construction_zone'],
+            'pedestrian_density': notif['pedestrian_density'],
+            'ev_distance': notif['ev_distance'],
+            'object_in_path': notif['object_in_path'],
+            'time_since_stop': notif['time_since_stop'],
+            'raw_score': round(prediction['raw_score'], 4),
+            'latitude': notif['_latitude'],
+            'longitude': notif['_longitude'],
         })
 
     # Sort by time descending (most recent first)
@@ -105,43 +119,57 @@ def predict_all(notifications, model_service):
     return alerts
 
 
-def compute_stats(alerts):
+def compute_fp_rate(items):
+    """FP rate: among predicted positives with ground truth, how many were actually negative."""
+    flagged_with_truth = [
+        a for a in items
+        if a['needs_intervention_predicted'] and a['needs_intervention_actual'] is not None
+    ]
+    if not flagged_with_truth:
+        return None
+    false_positives = sum(1 for a in flagged_with_truth if not a['needs_intervention_actual'])
+    return round(false_positives / len(flagged_with_truth), 4)
+
+
+def compute_accuracy(items):
+    """Accuracy among alerts with ground truth."""
+    with_truth = [a for a in items if a['needs_intervention_actual'] is not None]
+    if not with_truth:
+        return None
+    correct = sum(1 for a in with_truth
+                  if a['needs_intervention_predicted'] == a['needs_intervention_actual'])
+    return round(correct / len(with_truth), 4)
+
+
+def compute_stats(alerts, hours):
     """Compute aggregate stats matching StatsResponse shape."""
     total = len(alerts)
     flagged = sum(1 for a in alerts if a['needs_intervention_predicted'])
     suppressed = total - flagged
 
-    # FP rate: among predicted positives with ground truth, how many were actually negative
-    predicted_pos_with_truth = [
-        a for a in alerts
-        if a['needs_intervention_predicted'] and a['needs_intervention_actual'] is not None
-    ]
-    if predicted_pos_with_truth:
-        false_positives = sum(1 for a in predicted_pos_with_truth if not a['needs_intervention_actual'])
-        fp_rate = round(false_positives / len(predicted_pos_with_truth), 4)
-    else:
-        fp_rate = None
-
     # Per-type breakdown
-    by_type_dict = {}
+    by_type_items = {}
     for a in alerts:
-        t = a['notification_type']
-        if t not in by_type_dict:
-            by_type_dict[t] = {'notification_type': t, 'total': 0, 'flagged': 0, 'suppressed': 0}
-        by_type_dict[t]['total'] += 1
-        if a['needs_intervention_predicted']:
-            by_type_dict[t]['flagged'] += 1
-        else:
-            by_type_dict[t]['suppressed'] += 1
+        by_type_items.setdefault(a['notification_type'], []).append(a)
 
-    by_type = sorted(by_type_dict.values(), key=lambda x: x['total'], reverse=True)
+    by_type = []
+    for t, items in sorted(by_type_items.items(), key=lambda kv: len(kv[1]), reverse=True):
+        type_flagged = sum(1 for a in items if a['needs_intervention_predicted'])
+        by_type.append({
+            'notification_type': t,
+            'total': len(items),
+            'flagged': type_flagged,
+            'suppressed': len(items) - type_flagged,
+            'fp_rate': compute_fp_rate(items),
+            'accuracy': compute_accuracy(items),
+        })
 
     return {
-        'time_window_hours': 24,
+        'time_window_hours': hours,
         'total_alerts': total,
         'total_flagged': flagged,
         'total_suppressed': suppressed,
-        'overall_fp_rate': fp_rate,
+        'overall_fp_rate': compute_fp_rate(alerts),
         'by_type': by_type,
     }
 
@@ -197,7 +225,7 @@ def compute_model_health(alerts):
     }
 
 
-def compute_fp_over_time(alerts):
+def compute_fp_over_time(alerts, hours):
     """Compute FP rate bucketed by hour, matching FPOverTimeResponse shape."""
     from datetime import datetime as dt
 
@@ -226,30 +254,13 @@ def compute_fp_over_time(alerts):
         flagged = sum(1 for a in items if a['needs_intervention_predicted'])
         suppressed = total - flagged
 
-        flagged_with_truth = [a for a in items
-                              if a['needs_intervention_predicted']
-                              and a['needs_intervention_actual'] is not None]
-        if flagged_with_truth:
-            fp = sum(1 for a in flagged_with_truth if not a['needs_intervention_actual'])
-            fp_rate = round(fp / len(flagged_with_truth), 4)
-        else:
-            fp_rate = None
-
-        with_truth = [a for a in items if a['needs_intervention_actual'] is not None]
-        if with_truth:
-            correct = sum(1 for a in with_truth
-                          if a['needs_intervention_predicted'] == a['needs_intervention_actual'])
-            accuracy = round(correct / len(with_truth), 4)
-        else:
-            accuracy = None
-
         buckets.append({
             'time': start.strftime('%Y-%m-%dT%H:%M:%SZ'),
             'total': total,
             'flagged': flagged,
             'suppressed': suppressed,
-            'fp_rate': fp_rate,
-            'accuracy': accuracy,
+            'fp_rate': compute_fp_rate(items),
+            'accuracy': compute_accuracy(items),
         })
 
     # Clean up temp field
@@ -257,7 +268,7 @@ def compute_fp_over_time(alerts):
         del a['_parsed_time']
 
     return {
-        'time_window_hours': 24,
+        'time_window_hours': hours,
         'buckets': buckets,
     }
 
@@ -266,7 +277,7 @@ def main():
     logger.info("Sentinel Demo Data Export")
 
     # Step 1: Simulate
-    logger.info("Running fleet simulation (50 vehicles, 12 hours)...")
+    logger.info(f"Running fleet simulation ({NUM_VEHICLES} vehicles, {SIM_HOURS} hours)...")
     notifications = run_simulation()
     logger.info(f"Collected {len(notifications)} notifications")
 
@@ -277,9 +288,9 @@ def main():
     alerts = predict_all(notifications, model_service)
 
     # Step 3: Compute aggregates
-    stats = compute_stats(alerts)
+    stats = compute_stats(alerts, hours=SIM_HOURS)
     model_health = compute_model_health(alerts)
-    fp_over_time = compute_fp_over_time(alerts)
+    fp_over_time = compute_fp_over_time(alerts, hours=SIM_HOURS)
     health = {
         'status': 'healthy',
         'model_loaded': True,

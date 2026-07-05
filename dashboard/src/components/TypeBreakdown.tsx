@@ -11,6 +11,10 @@ import type { TypeStats } from "../services/api";
 
 interface TypeBreakdownProps {
   byType: TypeStats[];
+  /** Panel height in px; compact by default for the above-the-fold console. */
+  heightPx?: number;
+  /** Disable recharts animations for frequently-updating demo data. */
+  animate?: boolean;
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -22,7 +26,11 @@ const TYPE_LABELS: Record<string, string> = {
   passenger_assist: "Passenger",
 };
 
-export default function TypeBreakdown({ byType }: TypeBreakdownProps) {
+export default function TypeBreakdown({
+  byType,
+  heightPx = 420,
+  animate = true,
+}: TypeBreakdownProps) {
   const data = byType.map((t) => ({
     name: TYPE_LABELS[t.notification_type] || t.notification_type,
     Flagged: t.flagged,
@@ -31,7 +39,10 @@ export default function TypeBreakdown({ byType }: TypeBreakdownProps) {
   }));
 
   return (
-    <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-5 h-[420px] flex flex-col">
+    <div
+      className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-5 flex flex-col"
+      style={{ height: heightPx }}
+    >
       <h2 className="text-lg font-semibold text-white mb-4">
         Alerts by Notification Type
       </h2>
@@ -62,8 +73,8 @@ export default function TypeBreakdown({ byType }: TypeBreakdownProps) {
           <Legend
             wrapperStyle={{ fontSize: "13px", color: "#9ca3af" }}
           />
-          <Bar dataKey="Suppressed" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
-          <Bar dataKey="Flagged" stackId="a" fill="#ef4444" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="Suppressed" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} isAnimationActive={animate} />
+          <Bar dataKey="Flagged" stackId="a" fill="#ef4444" radius={[4, 4, 0, 0]} isAnimationActive={animate} />
         </BarChart>
       </ResponsiveContainer>
     </div>

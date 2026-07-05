@@ -47,6 +47,18 @@ describe("demoPredict", () => {
     expect(result.confidence).toBeGreaterThanOrEqual(0.85);
   });
 
+  it("object_query + object in path → flag even in high pedestrian area", () => {
+    const result = demoPredict(makePayload({
+      notification_type: "verification_request",
+      notification_subtype: "object_query",
+      object_in_path: true,
+      speed: 3,
+      pedestrian_density: 0.7,
+    }));
+    expect(result.needs_intervention).toBe(true);
+    expect(result.confidence).toBeGreaterThanOrEqual(0.85);
+  });
+
   it("object_query + high pedestrian → suppress", () => {
     const result = demoPredict(makePayload({
       notification_type: "verification_request",

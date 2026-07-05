@@ -1,7 +1,11 @@
+import type { ReactNode } from "react";
 import type { StatsResponse } from "../services/api";
+import AnimatedNumber from "./AnimatedNumber";
 
 interface OverviewCardsProps {
   stats: StatsResponse;
+  /** Overrides the "Last Nh" subtitle (demo mode shows "Current shift"). */
+  windowLabel?: string;
 }
 
 function StatCard({
@@ -11,22 +15,21 @@ function StatCard({
   color = "text-white",
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   subtitle?: string;
   color?: string;
 }) {
   return (
-    <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-5">
+    <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4">
       <p className="text-gray-400 text-sm font-medium">{label}</p>
-      <p className={`text-3xl font-bold mt-1 ${color}`}>{value}</p>
+      <p className={`text-2xl font-bold mt-1 ${color}`}>{value}</p>
       {subtitle && <p className="text-gray-500 text-xs mt-1">{subtitle}</p>}
     </div>
   );
 }
 
-export default function OverviewCards({ stats }: OverviewCardsProps) {
+export default function OverviewCards({ stats, windowLabel }: OverviewCardsProps) {
   const fpRate = stats.overall_fp_rate;
-  const fpDisplay = fpRate !== null ? `${(fpRate * 100).toFixed(1)}%` : "N/A";
 
   const suppressionRate =
     stats.total_alerts > 0
@@ -37,24 +40,33 @@ export default function OverviewCards({ stats }: OverviewCardsProps) {
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
       <StatCard
         label="Total Alerts"
-        value={stats.total_alerts.toLocaleString()}
-        subtitle={`Last ${stats.time_window_hours}h`}
+        value={<AnimatedNumber value={stats.total_alerts} />}
+        subtitle={windowLabel ?? `Last ${stats.time_window_hours}h`}
       />
       <StatCard
         label="Flagged for Review"
-        value={stats.total_flagged.toLocaleString()}
+        value={<AnimatedNumber value={stats.total_flagged} />}
         subtitle="Predicted as needing intervention"
         color="text-red-400"
       />
       <StatCard
         label="Suppressed"
-        value={stats.total_suppressed.toLocaleString()}
+        value={<AnimatedNumber value={stats.total_suppressed} />}
         subtitle={`${suppressionRate}% of alerts filtered`}
         color="text-emerald-400"
       />
       <StatCard
         label="Model FP Rate"
-        value={fpDisplay}
+        value={
+          fpRate !== null ? (
+            <AnimatedNumber
+              value={fpRate * 100}
+              format={(n) => `${n.toFixed(1)}%`}
+            />
+          ) : (
+            "N/A"
+          )
+        }
         subtitle="Among flagged alerts"
         color={
           fpRate !== null && fpRate < 0.3

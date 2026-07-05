@@ -1,5 +1,5 @@
 {
-  "time_window_hours": 24,
+  "time_window_hours": 12,
   "buckets": [
     {
       "time": "2024-12-01T06:00:00Z",

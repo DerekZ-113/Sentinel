@@ -83,4 +83,18 @@ describe('SimulatePanel', () => {
       expect(screen.getByText(/Suppress/)).toBeInTheDocument()
     })
   })
+
+  it('shows error message when prediction fails', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Network down'))
+
+    render(<SimulatePanel />)
+    await user.click(screen.getByText('Run Prediction'))
+
+    await waitFor(() => {
+      expect(screen.getByText(/Prediction failed: Network down/)).toBeInTheDocument()
+    })
+    // Button recovers so the user can retry
+    expect(screen.getByText('Run Prediction')).toBeInTheDocument()
+  })
 })

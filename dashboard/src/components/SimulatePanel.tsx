@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { postPredict } from "../services/api";
-import type { PredictionResponse } from "../services/api";
+import type { NotificationPayload, PredictionResponse } from "../services/api";
 
 const NOTIFICATION_TYPES = [
   "stuck",
@@ -19,7 +19,12 @@ const ROAD_TYPES = ["highway", "main_road", "residential", "downtown", "school_z
 const TRAFFIC_CONDITIONS = ["light", "moderate", "heavy", "standstill"];
 const CONSTRUCTION_ZONES = ["none", "temporary", "persistent", "flagger"];
 
-export default function SimulatePanel() {
+interface SimulatePanelProps {
+  /** Called with each successful prediction (demo mode injects it into the stream). */
+  onResult?: (result: PredictionResponse, payload: NotificationPayload) => void;
+}
+
+export default function SimulatePanel({ onResult }: SimulatePanelProps) {
   const [notifType, setNotifType] = useState("stuck");
   const [subtype, setSubtype] = useState<string | null>(null);
   const [roadType, setRoadType] = useState("downtown");
@@ -33,6 +38,7 @@ export default function SimulatePanel() {
   const [objectInPath, setObjectInPath] = useState(false);
 
   const [result, setResult] = useState<PredictionResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const showSubtype = SUBTYPES[notifType] !== undefined;
@@ -42,24 +48,27 @@ export default function SimulatePanel() {
   async function handlePredict() {
     setLoading(true);
     setResult(null);
+    setError(null);
+    const payload: NotificationPayload = {
+      vehicle_id: "sim_" + Math.random().toString(36).slice(2, 6),
+      speed,
+      expected_speed: expectedSpeed,
+      road_type: roadType,
+      traffic_condition: traffic,
+      construction_zone: construction,
+      notification_type: notifType,
+      notification_subtype: showSubtype ? subtype : null,
+      ev_distance: showEv ? evDistance : null,
+      pedestrian_density: pedestrianDensity,
+      object_in_path: showObject ? objectInPath : false,
+      time_since_stop: timeSinceStop,
+    };
     try {
-      const res = await postPredict({
-        vehicle_id: "sim_" + Math.random().toString(36).slice(2, 6),
-        speed,
-        expected_speed: expectedSpeed,
-        road_type: roadType,
-        traffic_condition: traffic,
-        construction_zone: construction,
-        notification_type: notifType,
-        notification_subtype: showSubtype ? subtype : null,
-        ev_distance: showEv ? evDistance : null,
-        pedestrian_density: pedestrianDensity,
-        object_in_path: showObject ? objectInPath : false,
-        time_since_stop: timeSinceStop,
-      });
+      const res = await postPredict(payload);
       setResult(res);
+      onResult?.(res, payload);
     } catch (e) {
-      console.error(e);
+      setError(e instanceof Error ? e.message : String(e));
     }
     setLoading(false);
   }
@@ -152,6 +161,13 @@ export default function SimulatePanel() {
       >
         {loading ? "Predicting..." : "Run Prediction"}
       </button>
+
+      {/* Error */}
+      {error && (
+        <div className="mt-5 p-4 rounded-lg border bg-red-900/20 border-red-800/50">
+          <p className="text-red-400 text-sm">Prediction failed: {error}</p>
+        </div>
+      )}
 
       {/* Result */}
       {result && (

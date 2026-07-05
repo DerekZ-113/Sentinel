@@ -1,5 +1,5 @@
 {
-  "time_window_hours": 24,
+  "time_window_hours": 12,
   "total_alerts": 1000,
   "total_flagged": 156,
   "total_suppressed": 844,
@@ -9,37 +9,49 @@
       "notification_type": "stuck",
       "total": 471,
       "flagged": 47,
-      "suppressed": 424
+      "suppressed": 424,
+      "fp_rate": 0.4255,
+      "accuracy": 0.6497
     },
     {
       "notification_type": "verification_request",
       "total": 263,
       "flagged": 83,
-      "suppressed": 180
+      "suppressed": 180,
+      "fp_rate": 0.1566,
+      "accuracy": 0.943
     },
     {
       "notification_type": "speed_anomaly",
       "total": 169,
       "flagged": 0,
-      "suppressed": 169
+      "suppressed": 169,
+      "fp_rate": null,
+      "accuracy": 0.574
     },
     {
       "notification_type": "emergency_vehicle_alert",
       "total": 59,
       "flagged": 0,
-      "suppressed": 59
+      "suppressed": 59,
+      "fp_rate": null,
+      "accuracy": 0.7119
     },
     {
       "notification_type": "passenger_assist",
       "total": 22,
       "flagged": 16,
-      "suppressed": 6
+      "suppressed": 6,
+      "fp_rate": 0.0,
+      "accuracy": 0.7273
     },
     {
       "notification_type": "impact_l0",
       "total": 16,
       "flagged": 10,
-      "suppressed": 6
+      "suppressed": 6,
+      "fp_rate": 0.2,
+      "accuracy": 0.625
     }
   ]
 }

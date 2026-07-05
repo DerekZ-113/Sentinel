@@ -38,6 +38,19 @@ describe("FPRateChart", () => {
     });
   });
 
+  it("labels the window from time_window_hours, not bucket count", async () => {
+    vi.spyOn(globalThis, "fetch").mockReturnValue(
+      Promise.resolve({
+        json: () => Promise.resolve(mockData),
+      } as Response)
+    );
+    render(<FPRateChart />);
+    await waitFor(() => {
+      // mockData has 3 buckets over a 24h window — the label must say 24
+      expect(screen.getByText("Last 24 hours")).toBeInTheDocument();
+    });
+  });
+
   it("shows error state on fetch failure", async () => {
     vi.spyOn(globalThis, "fetch").mockReturnValue(
       Promise.reject(new Error("Network error"))

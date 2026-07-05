@@ -101,6 +101,32 @@ describe('ModelHealth', () => {
     })
   })
 
+  it('renders accuracy of exactly 0 as 0.0%, not N/A', async () => {
+    vi.spyOn(globalThis, 'fetch').mockReturnValue(
+      Promise.resolve({
+        json: () => Promise.resolve({ ...mockHealthData, accuracy: 0 }),
+      } as Response)
+    )
+    render(<ModelHealth />)
+    await waitFor(() => {
+      expect(screen.getByText('0.0%')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('N/A')).not.toBeInTheDocument()
+  })
+
+  it('renders avg_confidence of exactly 0 as 0.0%, not N/A', async () => {
+    vi.spyOn(globalThis, 'fetch').mockReturnValue(
+      Promise.resolve({
+        json: () => Promise.resolve({ ...mockHealthData, avg_confidence: 0 }),
+      } as Response)
+    )
+    render(<ModelHealth />)
+    await waitFor(() => {
+      expect(screen.getByText('0.0%')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('N/A')).not.toBeInTheDocument()
+  })
+
   it('shows degraded status', async () => {
     vi.spyOn(globalThis, 'fetch').mockReturnValue(
       Promise.resolve({

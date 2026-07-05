@@ -8,11 +8,11 @@ docker-compose up --build          # Dashboard :3000, API :8000, DB :5432
 
 # Local dev
 uvicorn api.main:app --reload --port 8000
-cd dashboard && npm run dev        # Vite dev server on :5173
+cd dashboard && npm run dev        # Vite dev server on :3000 (proxies /api + /health to :8000)
 
 # Tests
 pytest tests/ -v                   # 240 Python tests
-cd dashboard && npm test           # 42 Vitest tests
+cd dashboard && npm test           # 108 Vitest tests
 cd dashboard && npm run lint       # ESLint
 
 # Coverage
@@ -51,4 +51,7 @@ See `.env.example`. Key vars: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PA
 - `ml/__init__.py` must not import heavy deps — torch was removed for this reason. Keep it lightweight.
 - `NOTIFICATION_TYPE_MAP` includes `None: 0` for training data. Inference never sees None (Pydantic validates), so this is safe.
 - `conftest.py` creates a FastAPI app without lifespan to avoid DB connection attempts in tests. Routes are copied from the real app.
-- Dashboard `AlertFeed` and `ModelHealth` fetch their own data independently. `App.tsx` only fetches health + stats on mount.
+- Dashboard `AlertFeed` and `ModelHealth` fetch their own data independently (live mode). `App.tsx` only fetches health + stats on mount.
+- Demo mode (`VITE_DEMO_MODE=true`): all surfaces derive from the replay engine singleton (`dashboard/src/demo/`). Demo/live component selection happens via module-scope `DEMO_MODE` ternaries in `App.tsx` — this is what lets Rollup tree-shake fixtures + demo modules out of live builds. Don't move those ternaries into render logic.
+- Demo component tests inject `createReplayEngine({pool, rng: mulberry32(seed), now})` via props (see `src/__tests__/helpers.ts`) — never set `VITE_DEMO_MODE` in tests.
+- Regenerating fixtures: `python3 -m scripts.export_demo_data` from repo root. `random.seed(42)` keeps existing values byte-identical — never add `random` calls to the simulation path.

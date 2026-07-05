@@ -14,7 +14,7 @@ import demoFPOverTime from "../data/fp-over-time.json";
 import { demoPredict } from "./demoPredict";
 
 const API_BASE = "/api";
-const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
+export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
 
 type ValidationIssue = {
   loc?: Array<string | number>;
@@ -97,6 +97,16 @@ export interface AlertRecord {
   speed: number | null;
   road_type: string | null;
   traffic_condition: string | null;
+  // Enrichment fields present in demo fixtures; live API responses may omit them
+  expected_speed?: number | null;
+  construction_zone?: string | null;
+  pedestrian_density?: number | null;
+  ev_distance?: number | null;
+  object_in_path?: boolean | null;
+  time_since_stop?: number | null;
+  raw_score?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export interface AlertsResponse {
@@ -176,16 +186,28 @@ export interface FPOverTimeResponse {
 }
 
 // ============================================================================
+// DEMO FIXTURES
+// ============================================================================
+
+// Plain type annotations (not `as` casts) so tsc structurally verifies the
+// bundled fixtures against the API contract at build time.
+const DEMO_HEALTH: HealthResponse = demoHealth;
+const DEMO_STATS: StatsResponse = demoStats;
+const DEMO_ALERTS: AlertsResponse = demoAlerts;
+const DEMO_MODEL_HEALTH: ModelHealthResponse = demoModelHealth;
+const DEMO_FP_OVER_TIME: FPOverTimeResponse = demoFPOverTime;
+
+// ============================================================================
 // API CALLS
 // ============================================================================
 
 export async function fetchHealth(): Promise<HealthResponse> {
-  if (DEMO_MODE) return Promise.resolve(demoHealth as HealthResponse);
+  if (DEMO_MODE) return Promise.resolve(DEMO_HEALTH);
   return fetchJson<HealthResponse>("/health");
 }
 
 export async function fetchStats(hours = 24): Promise<StatsResponse> {
-  if (DEMO_MODE) return Promise.resolve(demoStats as StatsResponse);
+  if (DEMO_MODE) return Promise.resolve(DEMO_STATS);
   return fetchJson<StatsResponse>(`${API_BASE}/stats?hours=${hours}`);
 }
 
@@ -195,7 +217,7 @@ export async function fetchAlerts(
   notificationType?: string
 ): Promise<AlertsResponse> {
   if (DEMO_MODE) {
-    let alerts = (demoAlerts as AlertsResponse).alerts;
+    let alerts = DEMO_ALERTS.alerts;
     if (notificationType) {
       alerts = alerts.filter((a) => a.notification_type === notificationType);
     }
@@ -214,8 +236,7 @@ export async function fetchAlerts(
 export async function fetchModelHealth(
   hours = 24
 ): Promise<ModelHealthResponse> {
-  if (DEMO_MODE)
-    return Promise.resolve(demoModelHealth as ModelHealthResponse);
+  if (DEMO_MODE) return Promise.resolve(DEMO_MODEL_HEALTH);
   return fetchJson<ModelHealthResponse>(
     `${API_BASE}/stats/model-health?hours=${hours}`
   );
@@ -243,8 +264,7 @@ export async function fetchFPOverTime(
   hours = 24,
   buckets = 12
 ): Promise<FPOverTimeResponse> {
-  if (DEMO_MODE)
-    return Promise.resolve(demoFPOverTime as FPOverTimeResponse);
+  if (DEMO_MODE) return Promise.resolve(DEMO_FP_OVER_TIME);
   return fetchJson<FPOverTimeResponse>(
     `${API_BASE}/stats/fp-over-time?hours=${hours}&buckets=${buckets}`
   );

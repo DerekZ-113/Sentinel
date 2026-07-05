@@ -17,10 +17,11 @@ venv/
 *.pt
 *.pth
 runs/
+ml/dataset_meta.json
 
 # Keep model files for Docker build (small enough to commit)
 # ml/xgboost_model.json  — INCLUDED (~2.5MB)
-# ml/xgboost_config.joblib — INCLUDED (<1KB)
+# ml/model_config.json — INCLUDED (<1KB)
 
 # IDE
 .idea/

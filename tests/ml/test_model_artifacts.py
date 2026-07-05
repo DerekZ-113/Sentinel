@@ -1,11 +1,11 @@
 """
-Validate saved model artifacts (.npy, .joblib, .json) are intact and consistent.
+Validate saved model artifacts (.npy, .json) are intact and consistent.
 """
 
+import json
 import os
 import pytest
 import numpy as np
-import joblib
 
 ML_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "ml")
 
@@ -14,37 +14,43 @@ _has_npy = os.path.exists(os.path.join(ML_DIR, "X_all.npy"))
 requires_npy = pytest.mark.skipif(not _has_npy, reason=".npy files not present (gitignored)")
 
 
+def _load_config():
+    with open(os.path.join(ML_DIR, "model_config.json")) as f:
+        return json.load(f)
+
+
 class TestModelArtifacts:
 
     def test_model_file_exists(self):
         assert os.path.exists(os.path.join(ML_DIR, "xgboost_model.json"))
 
     def test_config_file_exists(self):
-        assert os.path.exists(os.path.join(ML_DIR, "xgboost_config.joblib"))
+        assert os.path.exists(os.path.join(ML_DIR, "model_config.json"))
+
+    def test_no_pickle_artifacts(self):
+        """Committed artifacts are JSON only — loading a pickle (joblib)
+        from the repo would be an arbitrary-code-execution vector, and the
+        old scaler.joblib specifically caused silent training/serving skew."""
+        assert not os.path.exists(os.path.join(ML_DIR, "scaler.joblib"))
+        assert not os.path.exists(os.path.join(ML_DIR, "xgboost_config.joblib"))
 
     def test_config_has_required_keys(self):
-        config = joblib.load(os.path.join(ML_DIR, "xgboost_config.joblib"))
+        config = _load_config()
         assert "feature_columns" in config
         assert "threshold" in config
         assert "best_iteration" in config
 
     def test_config_feature_count(self):
-        config = joblib.load(os.path.join(ML_DIR, "xgboost_config.joblib"))
+        config = _load_config()
         assert len(config["feature_columns"]) == 28
 
     def test_config_threshold(self):
-        config = joblib.load(os.path.join(ML_DIR, "xgboost_config.joblib"))
+        config = _load_config()
         assert config["threshold"] == 0.5
 
     @requires_npy
     def test_x_all_shape(self):
         X = np.load(os.path.join(ML_DIR, "X_all.npy"))
-        assert X.shape[1] > 0
-        assert X.shape[0] > 0
-
-    @requires_npy
-    def test_x_train_shape(self):
-        X = np.load(os.path.join(ML_DIR, "X_train.npy"))
         assert X.shape[1] > 0
         assert X.shape[0] > 0
 
@@ -65,13 +71,11 @@ class TestModelArtifacts:
         assert not np.isnan(X).any()
 
     @requires_npy
-    def test_x_train_no_nans(self):
-        X = np.load(os.path.join(ML_DIR, "X_train.npy"))
-        assert not np.isnan(X).any()
-
-    @requires_npy
-    def test_x_train_subset_of_x_all(self):
-        """X_train (FP only) should be smaller than X_all (all notifications)."""
-        X_train = np.load(os.path.join(ML_DIR, "X_train.npy"))
-        X_all = np.load(os.path.join(ML_DIR, "X_all.npy"))
-        assert X_train.shape[0] < X_all.shape[0]
+    def test_groups_align_with_x_all(self):
+        """groups.npy carries the event_id per row — the grouped train/test
+        split depends on it lining up with X_all."""
+        groups = np.load(os.path.join(ML_DIR, "groups.npy"))
+        X = np.load(os.path.join(ML_DIR, "X_all.npy"))
+        assert groups.shape[0] == X.shape[0]
+        # Events are multi-row by construction (5s samples over 20-600s)
+        assert len(np.unique(groups)) < groups.shape[0]

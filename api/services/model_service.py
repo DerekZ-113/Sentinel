@@ -3,13 +3,17 @@ Sentinel Model Service
 
 Loads trained XGBoost model and serves predictions.
 Handles feature engineering from raw notification data.
+
+The model consumes raw engineered features — there is no scaler.
+XGBoost is tree-based and scale-invariant; a scaling stage would only
+reintroduce the training/serving-skew failure class this design removed.
 """
 
+import json
 import os
 import logging
 import numpy as np
 import xgboost as xgb
-import joblib
 from datetime import datetime
 
 logger = logging.getLogger("sentinel.model")
@@ -36,80 +40,21 @@ class ModelService:
             )
 
         model_path = os.path.join(model_dir, 'xgboost_model.json')
-        config_path = os.path.join(model_dir, 'xgboost_config.joblib')
-        scaler_path = os.path.join(model_dir, 'scaler.joblib')
+        config_path = os.path.join(model_dir, 'model_config.json')
 
         # Load model
         self.model = xgb.Booster()
         self.model.load_model(model_path)
 
-        # Load config (feature columns + threshold)
-        config = joblib.load(config_path)
+        # Load config (feature columns + threshold) — plain JSON, never pickle
+        with open(config_path) as f:
+            config = json.load(f)
         self.feature_columns = config['feature_columns']
         self.threshold = config.get('threshold', 0.5)
         self.best_iteration = config.get('best_iteration', 0)
 
-        # Load scaler if available
-        if os.path.exists(scaler_path):
-            self.scaler = joblib.load(scaler_path)
-            logger.info(f"Loaded scaler from {scaler_path}")
-        else:
-            self.scaler = self._build_fallback_scaler()
-            logger.warning("No scaler found — using reconstructed fallback")
-
         logger.info(f"Model loaded: {len(self.feature_columns)} features, "
                     f"threshold={self.threshold}, best_iter={self.best_iteration}")
-
-    def _build_fallback_scaler(self):
-        """
-        Reconstruct a MinMaxScaler from known feature ranges.
-        Used when the original scaler file isn't available.
-        
-        These ranges are derived from the data generation code
-        and feature engineering in prepare_data.py.
-        """
-        from sklearn.preprocessing import MinMaxScaler
-
-        # Build a 2-row array with [min_values, max_values] for each feature
-        # then fit the scaler on it — this gives the same result as fitting
-        # on data with those min/max values
-        feature_ranges = {
-            'speed_ratio':                  (0.0, 3.0),
-            'speed_deviation':              (-65.0, 15.0),
-            'is_stopped':                   (0, 1),
-            'expected_stopped':             (0, 1),
-            'road_type_encoded':            (0, 4),
-            'traffic_encoded':              (0, 3),
-            'construction_encoded':         (0, 3),
-            'notification_type_encoded':    (1, 6),    # Training data has no 0 (no-notification)
-            'notification_subtype_encoded': (0, 3),
-            'ev_distance_normalized':       (0.0, 2.0),
-            'pedestrian_density':           (0.0, 1.0),
-            'object_in_path':               (0, 1),
-            'time_since_stop_normalized':   (0.0, 2.0),
-            'hour_sin':                     (-1.0, 1.0),
-            'hour_cos':                     (-1.0, 1.0),
-            'high_traffic':                 (0, 1),
-            'high_pedestrian':              (0, 1),
-            'stuck_in_traffic':             (0, 1),
-            'stuck_in_construction':        (0, 1),
-            'stuck_clear_road':             (0, 1),
-            'object_query_high_ped':        (0, 1),
-            'object_query_low_ped':         (0, 1),
-            'object_query_moving':          (0, 1),
-            'ev_far_away':                  (0, 1),
-            'ev_close':                     (0, 1),
-            'speed_anomaly_in_traffic':     (0, 1),
-            'speed_anomaly_clear':          (0, 1),
-            'impact_rough_road':            (0, 1),
-        }
-
-        mins = [feature_ranges[col][0] for col in self.feature_columns]
-        maxs = [feature_ranges[col][1] for col in self.feature_columns]
-
-        scaler = MinMaxScaler()
-        scaler.fit(np.array([mins, maxs]))
-        return scaler
 
     def engineer_features(self, payload: dict) -> np.ndarray:
         """
@@ -200,19 +145,16 @@ class ModelService:
     def predict(self, payload: dict) -> dict:
         """
         Full prediction pipeline:
-        raw payload -> feature engineering -> scale -> predict -> result
+        raw payload -> feature engineering -> predict -> result
         """
         # Step 1: Engineer features
         features = self.engineer_features(payload)
 
-        # Step 2: Scale
-        features_scaled = self.scaler.transform(features)
-
-        # Step 3: Predict
-        dmatrix = xgb.DMatrix(features_scaled, feature_names=self.feature_columns)
+        # Step 2: Predict (raw features — the model is trained unscaled)
+        dmatrix = xgb.DMatrix(features, feature_names=self.feature_columns)
         raw_score = float(self.model.predict(dmatrix)[0])
 
-        # Step 4: Apply threshold
+        # Step 3: Apply threshold
         needs_intervention = raw_score >= self.threshold
 
         return {

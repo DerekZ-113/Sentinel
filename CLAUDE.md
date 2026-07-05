@@ -29,7 +29,9 @@ Services (`ModelService`, `DatabaseService`) are module-level singletons in `api
 
 - **Encoding maps** live in `ml/constants.py` — single source of truth for both training (`ml/prepare_data.py`) and inference (`api/services/model_service.py`). Never duplicate these maps.
 - **Feature column order** in `model_service.engineer_features()` must exactly match `FEATURE_COLUMNS` in `ml/constants.py`. Wrong order = silent prediction errors.
-- **Scaler fallback**: `model_service.py` loads `scaler.joblib` if available, otherwise reconstructs from hardcoded feature ranges in `_build_fallback_scaler()`.
+- **No scaler**: the model consumes raw engineered features (XGBoost is tree-based; scaling added nothing and once caused silent training/serving skew). Model config is plain JSON (`ml/model_config.json`) — never reintroduce pickled artifacts.
+- **Event-grouped splits**: training rows come in near-duplicate per-event runs (`ml/groups.npy` carries event_ids from `prepare_data.assign_event_ids`). Any train/val/test split must group by event_id — a row-level split leaks siblings and inflates metrics.
+- **ML pipeline**: `python -m ml.run_pipeline [--max-events N]` from anywhere (steps run as modules, artifacts land in `ml/`). Data regen: `python fleet_data/generate_fleet_data.py --seed 42 --notifications-only --truncate`.
 - **DB connections**: Always `conn = self._get_conn()` in try block, `self._put_conn(conn)` in finally. Uses `psycopg2.pool.ThreadedConnectionPool`.
 - **API auth**: `api/auth.py` reads `API_KEY` env var inside the function body on every call (not at module load) so tests can monkeypatch. Auth skipped when env var is empty.
 - **Logging**: Use `logging.getLogger("sentinel.<module>")`. No `print()` in production code. Exception: `ml/train_classifier.py` uses print for interactive CLI output tables.
@@ -54,4 +56,4 @@ See `.env.example`. Key vars: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PA
 - Dashboard `AlertFeed` and `ModelHealth` fetch their own data independently (live mode). `App.tsx` only fetches health + stats on mount.
 - Demo mode (`VITE_DEMO_MODE=true`): all surfaces derive from the replay engine singleton (`dashboard/src/demo/`). Demo/live component selection happens via module-scope `DEMO_MODE` ternaries in `App.tsx` — this is what lets Rollup tree-shake fixtures + demo modules out of live builds. Don't move those ternaries into render logic.
 - Demo component tests inject `createReplayEngine({pool, rng: mulberry32(seed), now})` via props (see `src/__tests__/helpers.ts`) — never set `VITE_DEMO_MODE` in tests.
-- Regenerating fixtures: `python3 -m scripts.export_demo_data` from repo root. `random.seed(42)` keeps existing values byte-identical — never add `random` calls to the simulation path.
+- Regenerating fixtures: `python3 -m scripts.export_demo_data` from repo root, deterministic under `random.seed(42)`. Fixture values are a function of (generator code, model artifacts) — regenerate whenever either changes; between model changes, avoid adding `random` calls to the simulation path so values stay byte-identical.

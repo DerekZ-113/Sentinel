@@ -4,7 +4,7 @@ Tests for fleet_data/generate_fleet_data.py — Vehicle class and helper functio
 
 import pytest
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fleet_data.generate_fleet_data import (
     Vehicle, ROAD_TYPE, TRAFFIC_CONDITION, CONSTRUCTION_ZONE,
@@ -212,23 +212,104 @@ class TestInterventionDetermination:
             v._determine_intervention("stuck", base_fp, sim_time)
             for _ in range(1000)
         )
-        # With increased FP, fewer interventions expected
-        assert interventions < 500  # Base would be ~350, with traffic < 200
+        # Base rate alone would yield ~350 interventions; the heavy-traffic
+        # FP boost must pull it well below that (seeded run lands ~200-212).
+        # A bound of 500 couldn't detect the boost being removed.
+        assert interventions < 280
 
-    def test_ev_context_close(self):
-        """When needs_intervention=True, ev_distance should be 10-100."""
-        v = Vehicle("v001")
-        v.assign_initial_context()
-        v.needs_intervention = True
+    def test_ev_context_distributions_overlap_but_separate(self):
+        """EV distance skews close for real alerts, far for FPs — the ranges
+        must overlap (no deterministic label encoding) while the means stay
+        clearly separated."""
         sim_time = datetime(2024, 12, 1, 12, 0, 0)
-        v._set_notification_context("emergency_vehicle_alert", sim_time)
-        assert 10 <= v.ev_distance <= 100
+        random.seed(42)
 
-    def test_ev_context_far(self):
-        """When needs_intervention=False, ev_distance should be 150-500."""
-        v = Vehicle("v001")
-        v.assign_initial_context()
-        v.needs_intervention = False
+        def draws(needs_intervention, n=500):
+            v = Vehicle("v001")
+            v.assign_initial_context()
+            v.needs_intervention = needs_intervention
+            values = []
+            for _ in range(n):
+                v._set_notification_context("emergency_vehicle_alert", sim_time)
+                values.append(v.ev_distance)
+            return values
+
+        close = draws(True)
+        far = draws(False)
+
+        # Each label's draws stay inside its overlapping range
+        assert all(10 <= d <= 250 for d in close)
+        assert all(80 <= d <= 500 for d in far)
+        # The ranges genuinely overlap (80-250 band reachable from both sides)
+        assert min(far) < 250
+        assert max(close) > 80
+        # But the distributions remain separated on average
+        assert sum(far) / len(far) - sum(close) / len(close) > 100
+
+    def test_object_in_path_probabilistic(self):
+        """object_in_path correlates with the label (~85%/15%) but never
+        equals it deterministically."""
         sim_time = datetime(2024, 12, 1, 12, 0, 0)
-        v._set_notification_context("emergency_vehicle_alert", sim_time)
-        assert 150 <= v.ev_distance <= 500
+        random.seed(42)
+
+        def rate(needs_intervention, n=1000):
+            v = Vehicle("v001")
+            v.assign_initial_context()
+            v.notification_subtype = "object_query"
+            v.needs_intervention = needs_intervention
+            hits = 0
+            for _ in range(n):
+                v._set_notification_context("verification_request", sim_time)
+                hits += v.object_in_path
+            return hits / n
+
+        real_rate = rate(True)
+        fp_rate = rate(False)
+
+        assert 0.80 <= real_rate <= 0.90   # not always True
+        assert 0.10 <= fp_rate <= 0.20     # not always False
+
+    def test_speed_anomaly_multipliers_overlap(self):
+        """speed_anomaly speeds draw from overlapping multiplier ranges
+        (real 0.15-0.45, FP 0.35-0.65 of expected speed)."""
+        random.seed(42)
+        sim_time = datetime(2024, 12, 1, 12, 0, 0)
+
+        def multipliers(needs_intervention, n=300):
+            values = []
+            for _ in range(n):
+                v = Vehicle("v001")
+                v.assign_initial_context()
+                v.expected_speed = 40.0
+                v.active_notification = "speed_anomaly"
+                v.notification_remaining = 10
+                v.needs_intervention = needs_intervention
+                v.update(sim_time)
+                values.append(v.speed / 40.0)
+            return values
+
+        real = multipliers(True)
+        fp = multipliers(False)
+
+        assert all(0.15 <= m <= 0.45 + 1e-9 for m in real)
+        assert all(0.35 <= m <= 0.65 + 1e-9 for m in fp)
+        # Shared 0.35-0.45 band is reachable from both labels
+        assert any(m > 0.35 for m in real)
+        assert any(m < 0.45 for m in fp)
+
+    def test_generator_deterministic_under_seed(self):
+        """Two vehicles simulated under the same seed produce identical
+        trajectories — the training dataset is reproducible."""
+        def run():
+            random.seed(1234)
+            v = Vehicle("v001")
+            v.assign_initial_context()
+            sim_time = datetime(2024, 12, 1, 12, 0, 0)
+            trace = []
+            for i in range(2000):
+                v.update(sim_time + timedelta(seconds=i))
+                trace.append((round(v.speed, 6), v.active_notification,
+                              v.needs_intervention, v.object_in_path))
+            return trace
+
+        assert run() == run()

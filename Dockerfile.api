@@ -16,7 +16,7 @@ COPY api/ api/
 COPY ml/__init__.py ml/__init__.py
 COPY ml/constants.py ml/constants.py
 COPY ml/xgboost_model.json ml/xgboost_model.json
-COPY ml/xgboost_config.joblib ml/xgboost_config.joblib
+COPY ml/model_config.json ml/model_config.json
 COPY fleet_data/ fleet_data/
 COPY scripts/ scripts/
 COPY setup_database.py .

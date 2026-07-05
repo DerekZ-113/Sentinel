@@ -8,7 +8,7 @@ import pytest
 import numpy as np
 from copy import deepcopy
 from unittest.mock import patch
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def _make_payload(**overrides):
@@ -208,16 +208,23 @@ class TestTimeFeatures:
         assert features[0, IDX["hour_sin"]] == pytest.approx(-1.0, abs=1e-6)
         assert features[0, IDX["hour_cos"]] == pytest.approx(0.0, abs=1e-6)
 
-    def test_hour_none_uses_current(self, model_service):
-        """When hour_of_day not provided, should use current hour."""
-        p = _make_payload()
-        del p["hour_of_day"]
-        features = model_service.engineer_features(p)
-        # Just check it doesn't crash and produces valid sin/cos
-        sin_val = features[0, IDX["hour_sin"]]
-        cos_val = features[0, IDX["hour_cos"]]
-        assert -1.0 <= sin_val <= 1.0
-        assert -1.0 <= cos_val <= 1.0
+    def test_hour_none_uses_current_utc(self, model_service):
+        """When hour_of_day is not provided, the fallback must be the
+        current UTC hour — asserted exactly by freezing time. (A range
+        check on sin/cos is true for any input and detects nothing.)"""
+        frozen = datetime(2024, 12, 1, 8, 30, 0, tzinfo=timezone.utc)
+
+        with patch("api.services.model_service.datetime") as mock_dt:
+            mock_dt.now.return_value = frozen
+            p = _make_payload()
+            del p["hour_of_day"]
+            features = model_service.engineer_features(p)
+
+        mock_dt.now.assert_called_once_with(timezone.utc)
+        expected_sin = np.sin(2 * np.pi * 8 / 24)
+        expected_cos = np.cos(2 * np.pi * 8 / 24)
+        assert features[0, IDX["hour_sin"]] == pytest.approx(expected_sin, abs=1e-9)
+        assert features[0, IDX["hour_cos"]] == pytest.approx(expected_cos, abs=1e-9)
 
 
 # ============================================================================

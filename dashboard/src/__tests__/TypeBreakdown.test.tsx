@@ -51,4 +51,17 @@ describe("TypeBreakdown", () => {
     const panel = container.firstElementChild as HTMLElement;
     expect(panel.style.height).toBe("420px");
   });
+
+  it("accepts filter props without crashing", () => {
+    // Bar clicks can't be exercised in jsdom (zero-size chart); the click →
+    // filter contract is covered in App.test via the component mock.
+    render(
+      <TypeBreakdown
+        byType={byType}
+        selectedType="verification_request"
+        onTypeClick={() => {}}
+      />
+    );
+    expect(screen.getByText("Alerts by Notification Type")).toBeInTheDocument();
+  });
 });

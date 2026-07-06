@@ -5,9 +5,13 @@ import FPRateChartView from "./FPRateChartView";
 
 interface FPRateChartProps {
   refreshToken?: number;
+  chartHeight?: number;
 }
 
-export default function FPRateChart({ refreshToken = 0 }: FPRateChartProps) {
+export default function FPRateChart({
+  refreshToken = 0,
+  chartHeight,
+}: FPRateChartProps) {
   const [data, setData] = useState<FPOverTimeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
@@ -82,7 +86,7 @@ export default function FPRateChart({ refreshToken = 0 }: FPRateChartProps) {
           {refreshError}
         </p>
       )}
-      <FPRateChartView data={data} />
+      <FPRateChartView data={data} chartHeight={chartHeight} />
     </div>
   );
 }

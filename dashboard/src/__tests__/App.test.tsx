@@ -56,16 +56,25 @@ vi.mock("../components/OverviewCards", () => ({
 }));
 
 vi.mock("../components/TypeBreakdown", () => ({
-  default: () => <div>Alerts by Type</div>,
-}));
-
-vi.mock("../components/SimulatePanel", () => ({
-  default: () => <div>Simulate Notification</div>,
+  default: ({ onTypeClick }: { onTypeClick?: (t: string) => void }) => (
+    <div>
+      Alerts by Type
+      <button onClick={() => onTypeClick?.("stuck")}>select stuck</button>
+    </div>
+  ),
 }));
 
 vi.mock("../components/AlertFeed", () => ({
-  default: ({ refreshToken }: { refreshToken?: number }) => (
-    <div data-testid="alert-feed">Recent Alerts token {refreshToken ?? 0}</div>
+  default: ({
+    refreshToken,
+    filterType,
+  }: {
+    refreshToken?: number;
+    filterType?: string | null;
+  }) => (
+    <div data-testid="alert-feed">
+      Recent Alerts token {refreshToken ?? 0} filter {filterType ?? "none"}
+    </div>
   ),
 }));
 
@@ -86,7 +95,9 @@ vi.mock("../components/StatusBar", () => ({
 }));
 
 vi.mock("../components/LiveAlertFeed", () => ({
-  default: () => <div data-testid="live-feed">Alert Stream</div>,
+  default: ({ filterType }: { filterType?: string | null }) => (
+    <div data-testid="live-feed">Alert Stream filter {filterType ?? "none"}</div>
+  ),
 }));
 
 vi.mock("../components/demo/DemoFPRateChart", () => ({
@@ -103,6 +114,11 @@ vi.mock("../components/AlertDetailDrawer", () => ({
 
 vi.mock("../components/SimulateDrawer", () => ({
   default: () => null,
+}));
+
+vi.mock("../components/LiveSimulateDrawer", () => ({
+  default: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="live-simulate-drawer">Simulate Drawer</div> : null,
 }));
 
 const fetchHealthMock = vi.mocked(fetchHealth);
@@ -128,16 +144,6 @@ function stats(totalAlerts = 100) {
   };
 }
 
-function mockIntersectionObserver() {
-  class MockIntersectionObserver {
-    observe = vi.fn();
-    unobserve = vi.fn();
-    disconnect = vi.fn();
-  }
-
-  vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
-}
-
 describe("App live refresh", () => {
   const originalDemoMode = import.meta.env.VITE_DEMO_MODE;
 
@@ -145,7 +151,6 @@ describe("App live refresh", () => {
     vi.clearAllMocks();
     vi.useRealTimers();
     import.meta.env.VITE_DEMO_MODE = "false";
-    mockIntersectionObserver();
     fetchHealthMock.mockResolvedValue(baseHealth);
     fetchStatsMock.mockResolvedValue(stats());
   });
@@ -232,6 +237,45 @@ describe("App live refresh", () => {
     expect(fetchHealthMock).toHaveBeenCalledTimes(0);
     expect(fetchStatsMock).toHaveBeenCalledTimes(0);
     expect(setIntervalSpy.mock.calls.some(([, delay]) => delay === 5000)).toBe(false);
+  });
+
+  it("opens the simulate drawer from the top bar", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Live Refresh");
+    expect(screen.queryByTestId("live-simulate-drawer")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Simulate" }));
+    expect(screen.getByTestId("live-simulate-drawer")).toBeInTheDocument();
+  });
+
+  it("filters the feed from the type breakdown and clears via the chip", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Live Refresh");
+    expect(screen.getByTestId("alert-feed")).toHaveTextContent("filter none");
+
+    await user.click(screen.getByRole("button", { name: "select stuck" }));
+    expect(screen.getByTestId("alert-feed")).toHaveTextContent("filter stuck");
+
+    await user.click(screen.getByRole("button", { name: "Clear type filter" }));
+    expect(screen.getByTestId("alert-feed")).toHaveTextContent("filter none");
+    expect(
+      screen.queryByRole("button", { name: "Clear type filter" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("toggles the filter off when the same type is clicked again", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText("Live Refresh");
+    await user.click(screen.getByRole("button", { name: "select stuck" }));
+    expect(screen.getByTestId("alert-feed")).toHaveTextContent("filter stuck");
+
+    await user.click(screen.getByRole("button", { name: "select stuck" }));
+    expect(screen.getByTestId("alert-feed")).toHaveTextContent("filter none");
   });
 
   it("keeps existing summary data visible when a later refresh fails", async () => {

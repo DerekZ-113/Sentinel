@@ -9,6 +9,7 @@ import { clockTime } from "../demo/format";
 import { makeTestEngine } from "./helpers";
 
 const T0 = new Date("2024-12-01T06:00:10Z").getTime();
+const HEALTH = { status: "healthy", model_features: 28 };
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -20,9 +21,17 @@ afterEach(() => {
 });
 
 describe("StatusBar", () => {
+  it("shows the brand and model health summary", () => {
+    render(
+      <StatusBar health={HEALTH} onSimulate={() => {}} engine={makeTestEngine()} />
+    );
+    expect(screen.getByText("Sentinel")).toBeInTheDocument();
+    expect(screen.getByText("healthy · 28 features")).toBeInTheDocument();
+  });
+
   it("shows the LIVE indicator and fleet reporting count", () => {
     const engine = makeTestEngine({ fleetSize: 50 });
-    render(<StatusBar onSimulate={() => {}} engine={engine} />);
+    render(<StatusBar health={HEALTH} onSimulate={() => {}} engine={engine} />);
 
     expect(screen.getByText("LIVE")).toBeInTheDocument();
     const { vehiclesRecent } = engine.getSnapshot();
@@ -31,12 +40,16 @@ describe("StatusBar", () => {
   });
 
   it("shows the last-event age", () => {
-    render(<StatusBar onSimulate={() => {}} engine={makeTestEngine()} />);
+    render(
+      <StatusBar health={HEALTH} onSimulate={() => {}} engine={makeTestEngine()} />
+    );
     expect(screen.getByText(/last event (just now|\d+[smh] ago)/)).toBeInTheDocument();
   });
 
   it("ticks the clock every second", () => {
-    render(<StatusBar onSimulate={() => {}} engine={makeTestEngine()} />);
+    render(
+      <StatusBar health={HEALTH} onSimulate={() => {}} engine={makeTestEngine()} />
+    );
     expect(screen.getByText(clockTime(T0))).toBeInTheDocument();
 
     act(() => {
@@ -47,13 +60,17 @@ describe("StatusBar", () => {
 
   it("invokes onSimulate when the Simulate button is clicked", () => {
     const onSimulate = vi.fn();
-    render(<StatusBar onSimulate={onSimulate} engine={makeTestEngine()} />);
+    render(
+      <StatusBar health={HEALTH} onSimulate={onSimulate} engine={makeTestEngine()} />
+    );
     fireEvent.click(screen.getByText("Simulate"));
     expect(onSimulate).toHaveBeenCalledTimes(1);
   });
 
   it("dismisses the synthetic-replay notice", () => {
-    render(<StatusBar onSimulate={() => {}} engine={makeTestEngine()} />);
+    render(
+      <StatusBar health={HEALTH} onSimulate={() => {}} engine={makeTestEngine()} />
+    );
     expect(screen.getByText(/Synthetic replay/)).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("Dismiss notice"));
     expect(screen.queryByText(/Synthetic replay/)).not.toBeInTheDocument();

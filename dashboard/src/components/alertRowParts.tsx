@@ -20,16 +20,23 @@ export function TypeBadge({
     passenger_assist: "bg-cyan-900/50 text-cyan-300 border-cyan-800/50",
   };
 
-  const label = subtype ? `${type}/${subtype}` : type;
-  const display = label.replace(/_/g, " ");
-
   return (
     <span
-      className={`inline-block px-2 py-0.5 rounded text-xs border ${
-        colors[type] || "bg-gray-800 text-gray-300 border-gray-700"
-      }`}
+      className="inline-block max-w-full"
+      title={subtype ? `${type}/${subtype}` : type}
     >
-      {display}
+      <span
+        className={`inline-block px-2 py-0.5 rounded text-xs border whitespace-nowrap ${
+          colors[type] || "bg-gray-800 text-gray-300 border-gray-700"
+        }`}
+      >
+        {type.replace(/_/g, " ")}
+      </span>
+      {subtype && (
+        <span className="block text-[10px] text-gray-500 truncate">
+          {subtype.replace(/_/g, " ")}
+        </span>
+      )}
     </span>
   );
 }
@@ -45,11 +52,14 @@ export function ConfidenceBar({ value }: { value: number }) {
       : "bg-red-500";
 
   return (
-    <div className="flex items-center gap-2 justify-end">
-      <span className="text-gray-400">{pct}%</span>
-      <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${color}`} style={{ width }} />
-      </div>
+    <div className="relative inline-block align-middle w-16 h-4 bg-gray-700 rounded-full overflow-hidden">
+      <div
+        className={`h-full rounded-full ${color} opacity-70`}
+        style={{ width }}
+      />
+      <span className="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-white leading-none">
+        {pct}%
+      </span>
     </div>
   );
 }

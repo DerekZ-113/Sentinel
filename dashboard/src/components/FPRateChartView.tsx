@@ -46,17 +46,17 @@ export default function FPRateChartView({
   }));
 
   return (
-    <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-5">
+    <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-4">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-white">FP Rate Over Time</h2>
+      <div className="flex items-center justify-between mb-2.5">
+        <h2 className="text-base font-semibold text-white">FP Rate Over Time</h2>
         <span className="text-xs text-gray-500">
           {windowLabel ?? `Last ${data.time_window_hours} hours`}
         </span>
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 mb-3">
+      <div className="flex items-center gap-4 mb-2">
         <div className="flex items-center gap-1.5">
           <span
             className="inline-block"

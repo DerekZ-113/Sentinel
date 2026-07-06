@@ -1,6 +1,7 @@
 import {
   BarChart,
   Bar,
+  Cell,
   XAxis,
   YAxis,
   Tooltip,
@@ -15,6 +16,10 @@ interface TypeBreakdownProps {
   heightPx?: number;
   /** Disable recharts animations for frequently-updating demo data. */
   animate?: boolean;
+  /** Currently applied stream filter; the other types' bars are dimmed. */
+  selectedType?: string | null;
+  /** Bar click → toggle the stream filter for that notification type. */
+  onTypeClick?: (notificationType: string) => void;
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -30,20 +35,35 @@ export default function TypeBreakdown({
   byType,
   heightPx = 420,
   animate = true,
+  selectedType = null,
+  onTypeClick,
 }: TypeBreakdownProps) {
   const data = byType.map((t) => ({
     name: TYPE_LABELS[t.notification_type] || t.notification_type,
+    type: t.notification_type,
     Flagged: t.flagged,
     Suppressed: t.suppressed,
     total: t.total,
   }));
+
+  // Click/dim handled per entry via Cell so both stack segments of a type
+  // act as one hit target.
+  const cells = (barKey: string) =>
+    data.map((entry) => (
+      <Cell
+        key={`${barKey}-${entry.type}`}
+        opacity={selectedType && selectedType !== entry.type ? 0.35 : 1}
+        cursor={onTypeClick ? "pointer" : undefined}
+        onClick={onTypeClick ? () => onTypeClick(entry.type) : undefined}
+      />
+    ));
 
   return (
     <div
       className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-5 flex flex-col"
       style={{ height: heightPx }}
     >
-      <h2 className="text-lg font-semibold text-white mb-4">
+      <h2 className="text-base font-semibold text-white mb-2.5">
         Alerts by Notification Type
       </h2>
 
@@ -73,8 +93,12 @@ export default function TypeBreakdown({
           <Legend
             wrapperStyle={{ fontSize: "13px", color: "#9ca3af" }}
           />
-          <Bar dataKey="Suppressed" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} isAnimationActive={animate} />
-          <Bar dataKey="Flagged" stackId="a" fill="#ef4444" radius={[4, 4, 0, 0]} isAnimationActive={animate} />
+          <Bar dataKey="Suppressed" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} isAnimationActive={animate}>
+            {cells("s")}
+          </Bar>
+          <Bar dataKey="Flagged" stackId="a" fill="#ef4444" radius={[4, 4, 0, 0]} isAnimationActive={animate}>
+            {cells("f")}
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
     </div>

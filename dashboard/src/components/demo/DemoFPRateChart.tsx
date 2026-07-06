@@ -11,8 +11,10 @@ import type { ReplayEngine } from "../../demo/types";
 
 export default function DemoFPRateChart({
   engine = getEngine(),
+  chartHeight,
 }: {
   engine?: ReplayEngine;
+  chartHeight?: number;
 }) {
   const snapshot = useEngineSnapshot(engine);
   const data = useMemo(
@@ -26,6 +28,7 @@ export default function DemoFPRateChart({
       windowLabel="Last 30 min · live"
       tickFormatter={minuteLabel}
       animate={false}
+      chartHeight={chartHeight}
     />
   );
 }

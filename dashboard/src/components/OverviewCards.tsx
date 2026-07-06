@@ -20,10 +20,12 @@ function StatCard({
   color?: string;
 }) {
   return (
-    <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl p-4">
+    <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl px-3.5 py-2.5">
       <p className="text-gray-400 text-sm font-medium">{label}</p>
-      <p className={`text-2xl font-bold mt-1 ${color}`}>{value}</p>
-      {subtitle && <p className="text-gray-500 text-xs mt-1">{subtitle}</p>}
+      <p className={`text-xl font-bold mt-0.5 ${color}`}>{value}</p>
+      {subtitle && (
+        <p className="text-gray-500 text-[11px] mt-0.5 truncate">{subtitle}</p>
+      )}
     </div>
   );
 }
@@ -37,7 +39,7 @@ export default function OverviewCards({ stats, windowLabel }: OverviewCardsProps
       : "0";
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       <StatCard
         label="Total Alerts"
         value={<AnimatedNumber value={stats.total_alerts} />}

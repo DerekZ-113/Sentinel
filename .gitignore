@@ -43,3 +43,6 @@ Thumbs.db
 # Node
 node_modules/
 dashboard/dist/
+
+# Personal interview-prep + review notes — keep private, never publish
+docs/

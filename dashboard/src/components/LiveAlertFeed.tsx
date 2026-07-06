@@ -17,11 +17,14 @@ const FEED_SIZE = 50;
 interface LiveAlertFeedProps {
   engine?: ReplayEngine;
   onSelect?: (alert: DemoAlert) => void;
+  /** Constant for a mount — App remounts the feed via key when it changes. */
+  filterType?: string | null;
 }
 
 export default function LiveAlertFeed({
   engine = getEngine(),
   onSelect,
+  filterType = null,
 }: LiveAlertFeedProps) {
   const snapshot = useEngineSnapshot(engine);
   const now = useNow(1000);
@@ -31,14 +34,24 @@ export default function LiveAlertFeed({
   // Rows newer than the first paint slide in; the initial backlog doesn't
   const [initialNewestId] = useState(() => snapshot.events[0]?.id ?? 0);
 
-  const visible = frozen ?? snapshot.events.slice(0, FEED_SIZE);
+  const matchesFilter = (alert: DemoAlert) =>
+    filterType === null || alert.notification_type === filterType;
+  const filteredEvents = snapshot.events.filter(matchesFilter);
+
+  const visible = frozen ?? filteredEvents.slice(0, FEED_SIZE);
+  // Count-based rather than id arithmetic: under a filter, ids in the
+  // visible stream are no longer consecutive.
   const pending =
-    frozen !== null && frozen.length > 0 && snapshot.events.length > 0
-      ? snapshot.events[0].id - frozen[0].id
+    frozen !== null
+      ? filteredEvents.filter((e) => e.id > (frozen[0]?.id ?? 0)).length
       : 0;
 
   function freeze() {
-    setFrozen((current) => current ?? engine.getSnapshot().events.slice(0, FEED_SIZE));
+    setFrozen(
+      (current) =>
+        current ??
+        engine.getSnapshot().events.filter(matchesFilter).slice(0, FEED_SIZE)
+    );
   }
 
   function resume() {
@@ -65,7 +78,7 @@ export default function LiveAlertFeed({
   }
 
   return (
-    <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-5 overflow-hidden max-h-[420px] flex flex-col relative">
+    <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-5 overflow-hidden max-h-[420px] lg:max-h-none lg:h-full min-h-0 flex flex-col relative">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-white">Alert Stream</h2>
         <span className="text-xs text-gray-500 tabular-nums">
@@ -87,16 +100,26 @@ export default function LiveAlertFeed({
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onScroll={handleScroll}
-        className="overflow-auto flex-1 overflow-x-auto"
+        className="overflow-auto flex-1"
       >
-        <table className="w-full text-sm min-w-[500px]">
+        <table className="w-full text-sm table-fixed">
           <thead>
-            <tr className="text-gray-400 text-xs uppercase border-b border-gray-700/50">
-              <th className="text-left py-2 pr-3">Time</th>
-              <th className="text-left py-2 pr-3">Vehicle</th>
-              <th className="text-left py-2 pr-3">Type</th>
-              <th className="text-left py-2 pr-3">Prediction</th>
-              <th className="text-right py-2">Confidence</th>
+            <tr className="text-gray-400 text-xs uppercase">
+              <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700/50 text-left py-2 pr-3 w-16">
+                Time
+              </th>
+              <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700/50 text-left py-2 pr-3 w-32">
+                Vehicle
+              </th>
+              <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700/50 text-left py-2 pr-3">
+                Type
+              </th>
+              <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700/50 text-left py-2 pr-3 w-24">
+                Prediction
+              </th>
+              <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700/50 text-right py-2 w-20">
+                Confidence
+              </th>
             </tr>
           </thead>
           <tbody>

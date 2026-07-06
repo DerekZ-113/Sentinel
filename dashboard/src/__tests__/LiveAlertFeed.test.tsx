@@ -96,6 +96,48 @@ describe("LiveAlertFeed", () => {
     engine.stop();
   });
 
+  it("shows only alerts of the filtered type", () => {
+    // makePool alternates stuck / speed_anomaly, so 10 of 20 match
+    render(<LiveAlertFeed engine={steadyEngine()} filterType="stuck" />);
+    expect(screen.getAllByRole("row")).toHaveLength(11);
+  });
+
+  it("counts only matching alerts in the pending pill while frozen", () => {
+    const engine = steadyEngine();
+    render(<LiveAlertFeed engine={engine} filterType="stuck" />);
+
+    fireEvent.mouseEnter(scrollContainer());
+    const manualBase = {
+      time: new Date(T0).toISOString(),
+      notification_subtype: null,
+      needs_intervention_predicted: false,
+      needs_intervention_actual: null,
+      confidence: 0.9,
+      speed: 10,
+      road_type: "downtown",
+      traffic_condition: "heavy",
+    };
+    act(() => {
+      engine.injectManual({
+        ...manualBase,
+        vehicle_id: "sim_a",
+        notification_type: "stuck",
+      });
+      engine.injectManual({
+        ...manualBase,
+        vehicle_id: "sim_b",
+        notification_type: "speed_anomaly",
+      });
+      engine.injectManual({
+        ...manualBase,
+        vehicle_id: "sim_c",
+        notification_type: "stuck",
+      });
+    });
+
+    expect(screen.getByText("2 new alerts ↑")).toBeInTheDocument();
+  });
+
   it("badges manual alerts and reports row clicks via onSelect", () => {
     const engine = steadyEngine();
     const manual = engine.injectManual({

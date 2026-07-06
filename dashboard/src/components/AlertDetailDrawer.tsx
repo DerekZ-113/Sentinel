@@ -4,7 +4,6 @@
  * vehicle's recent history from the replay ring.
  */
 
-import { useEffect } from "react";
 import { getEngine } from "../demo/engineInstance";
 import { useEngineSnapshot, useNow } from "../demo/useEngine";
 import { relativeTime } from "../demo/format";
@@ -13,6 +12,7 @@ import { evaluateRules } from "../services/decisionRules";
 import type { NotificationPayload } from "../services/api";
 import { TypeBadge } from "./alertRowParts";
 import SectorMap from "./SectorMap";
+import DrawerShell from "./DrawerShell";
 
 const THRESHOLD = 0.5;
 const HISTORY_SIZE = 6;
@@ -57,15 +57,6 @@ export default function AlertDetailDrawer({
   const snapshot = useEngineSnapshot(engine);
   const now = useNow(1000);
 
-  useEffect(() => {
-    if (alert === null) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [alert, onClose]);
-
   if (alert === null) return null;
 
   const rawScore =
@@ -83,21 +74,12 @@ export default function AlertDetailDrawer({
       : null;
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/50 z-40"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-
-      {/* Drawer */}
-      <aside
-        className="fixed inset-y-0 right-0 w-full sm:w-[420px] z-50 bg-gray-900 border-l border-gray-800 overflow-y-auto"
-        role="dialog"
-        aria-label={`Alert detail for ${alert.vehicle_id}`}
-      >
-        <div className="p-5 space-y-5">
+    <DrawerShell
+      open
+      onClose={onClose}
+      ariaLabel={`Alert detail for ${alert.vehicle_id}`}
+    >
+      <div className="p-5 space-y-5">
           {/* Header */}
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -290,9 +272,8 @@ export default function AlertDetailDrawer({
               </ul>
             )}
           </div>
-        </div>
-      </aside>
-    </>
+      </div>
+    </DrawerShell>
   );
 }
 

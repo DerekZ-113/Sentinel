@@ -3,13 +3,18 @@ import { fetchAlerts } from "../services/api";
 import type { AlertRecord } from "../services/api";
 import { ConfidenceBar, TypeBadge } from "./alertRowParts";
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 50;
 
 interface AlertFeedProps {
   refreshToken?: number;
+  /** Constant for a mount — App remounts the feed via key when it changes. */
+  filterType?: string | null;
 }
 
-export default function AlertFeed({ refreshToken = 0 }: AlertFeedProps) {
+export default function AlertFeed({
+  refreshToken = 0,
+  filterType = null,
+}: AlertFeedProps) {
   const [alerts, setAlerts] = useState<AlertRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -24,7 +29,7 @@ export default function AlertFeed({ refreshToken = 0 }: AlertFeedProps) {
     let cancelled = false;
     const isRefreshOnly = hasLoadedRef.current && lastPageRef.current === page;
 
-    fetchAlerts(PAGE_SIZE, page * PAGE_SIZE)
+    fetchAlerts(PAGE_SIZE, page * PAGE_SIZE, filterType ?? undefined)
       .then((data) => {
         if (cancelled) return;
         setAlerts(data.alerts);
@@ -49,7 +54,7 @@ export default function AlertFeed({ refreshToken = 0 }: AlertFeedProps) {
         setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [page, refreshToken]);
+  }, [page, refreshToken, filterType]);
 
   function goToPage(nextPage: number) {
     setLoading(true);
@@ -62,7 +67,7 @@ export default function AlertFeed({ refreshToken = 0 }: AlertFeedProps) {
     setLoading(true);
     setError(null);
     setRefreshError(null);
-    fetchAlerts(PAGE_SIZE, page * PAGE_SIZE)
+    fetchAlerts(PAGE_SIZE, page * PAGE_SIZE, filterType ?? undefined)
       .then((data) => {
         setAlerts(data.alerts);
         setTotal(data.total);
@@ -102,7 +107,7 @@ export default function AlertFeed({ refreshToken = 0 }: AlertFeedProps) {
   }
 
   return (
-    <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-5 overflow-hidden max-h-[420px] flex flex-col">
+    <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-5 overflow-hidden max-h-[420px] lg:max-h-none lg:h-full min-h-0 flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-white">Recent Alerts</h2>
         <span className="text-xs text-gray-500">
@@ -116,16 +121,28 @@ export default function AlertFeed({ refreshToken = 0 }: AlertFeedProps) {
         </p>
       )}
 
-      <div ref={tableRef} className="overflow-auto flex-1 overflow-x-auto">
-        <table className="w-full text-sm min-w-[500px]">
+      <div ref={tableRef} className="overflow-auto flex-1">
+        <table className="w-full text-sm table-fixed">
           <thead>
-            <tr className="text-gray-400 text-xs uppercase border-b border-gray-700/50">
-              <th className="text-left py-2 pr-3">Vehicle</th>
-              <th className="text-left py-2 pr-3">Type</th>
-              <th className="text-left py-2 pr-3">Prediction</th>
-              <th className="text-right py-2 pr-3">Confidence</th>
-              <th className="text-left py-2 pr-3">Actual</th>
-              <th className="text-center py-2">Correct</th>
+            <tr className="text-gray-400 text-xs uppercase">
+              <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700/50 text-left py-2 pr-3 w-28">
+                Vehicle
+              </th>
+              <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700/50 text-left py-2 pr-3">
+                Type
+              </th>
+              <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700/50 text-left py-2 pr-3 w-24">
+                Prediction
+              </th>
+              <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700/50 text-right py-2 pr-3 w-20">
+                Confidence
+              </th>
+              <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700/50 text-left py-2 pr-3 w-14">
+                Actual
+              </th>
+              <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700/50 text-center py-2 w-16">
+                Correct
+              </th>
             </tr>
           </thead>
           <tbody>

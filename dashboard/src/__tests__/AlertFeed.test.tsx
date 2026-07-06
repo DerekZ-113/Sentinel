@@ -108,6 +108,20 @@ describe('AlertFeed', () => {
     })
   })
 
+  it('passes the type filter to the API', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockReturnValue(
+      Promise.resolve({
+        json: () => Promise.resolve({ alerts: mockAlerts, total: 3, limit: 50, offset: 0 }),
+      } as Response)
+    )
+    render(<AlertFeed filterType="stuck" />)
+    await waitFor(() => {
+      expect(screen.getByText('vehicle_001')).toBeInTheDocument()
+    })
+    const calledUrl = String(fetchSpy.mock.calls[0]?.[0])
+    expect(calledUrl).toContain('notification_type=stuck')
+  })
+
   it('shows total count', async () => {
     vi.spyOn(globalThis, 'fetch').mockReturnValue(
       Promise.resolve({
@@ -167,7 +181,7 @@ describe('AlertFeed', () => {
     await waitFor(() => {
       expect(screen.getByText('Previous')).toBeInTheDocument()
       expect(screen.getByText('Next')).toBeInTheDocument()
-      expect(screen.getByText('Page 1 of 5')).toBeInTheDocument()
+      expect(screen.getByText('Page 1 of 2')).toBeInTheDocument()
     })
   })
 

@@ -1,4 +1,5 @@
 import type { ModelHealthResponse } from "../services/api";
+import { STATUS_CONFIG } from "./modelHealthStatus";
 import {
   BarChart,
   Bar,
@@ -10,12 +11,6 @@ import {
   Pie,
   Cell,
 } from "recharts";
-
-const STATUS_CONFIG: Record<string, { color: string; bg: string; label: string }> = {
-  healthy: { color: "text-emerald-400", bg: "bg-emerald-400", label: "Healthy" },
-  warning: { color: "text-yellow-400", bg: "bg-yellow-400", label: "Warning" },
-  degraded: { color: "text-red-400", bg: "bg-red-400", label: "Degraded" },
-};
 
 const CONF_COLORS = {
   high: "#10b981",
@@ -169,7 +164,7 @@ export default function ModelHealthView({ data, animate = true }: ModelHealthVie
   );
 }
 
-function MiniCard({
+export function MiniCard({
   label,
   value,
   color = "text-white",

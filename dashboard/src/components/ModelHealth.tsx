@@ -2,12 +2,22 @@ import { useEffect, useRef, useState } from "react";
 import { fetchModelHealth } from "../services/api";
 import type { ModelHealthResponse } from "../services/api";
 import ModelHealthView from "./ModelHealthView";
+import CompactModelHealthCard from "./CompactModelHealthCard";
+import DrawerShell from "./DrawerShell";
 
 interface ModelHealthProps {
   refreshToken?: number;
+  expanded?: boolean;
+  onExpand?: () => void;
+  onClose?: () => void;
 }
 
-export default function ModelHealth({ refreshToken = 0 }: ModelHealthProps) {
+export default function ModelHealth({
+  refreshToken = 0,
+  expanded = false,
+  onExpand,
+  onClose,
+}: ModelHealthProps) {
   const [data, setData] = useState<ModelHealthResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
@@ -82,7 +92,29 @@ export default function ModelHealth({ refreshToken = 0 }: ModelHealthProps) {
           {refreshError}
         </p>
       )}
-      <ModelHealthView data={data} />
+      <CompactModelHealthCard data={data} onExpand={onExpand} />
+      <DrawerShell
+        open={expanded}
+        onClose={onClose ?? (() => {})}
+        ariaLabel="Model health details"
+        widthClassName="w-full sm:max-w-xl"
+      >
+        <div className="p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-gray-500">
+              Full breakdown for the current window.
+            </p>
+            <button
+              onClick={onClose}
+              className="text-gray-500 hover:text-white text-lg leading-none px-1 ml-3"
+              aria-label="Close model health details"
+            >
+              ✕
+            </button>
+          </div>
+          <ModelHealthView data={data} />
+        </div>
+      </DrawerShell>
     </div>
   );
 }

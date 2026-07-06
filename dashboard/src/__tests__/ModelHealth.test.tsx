@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import ModelHealth from '../components/ModelHealth'
 
 const mockHealthData = {
@@ -77,16 +77,48 @@ describe('ModelHealth', () => {
     })
   })
 
-  it('shows suppression rate', async () => {
+  it('shows suppression rate in the expanded details view', async () => {
     vi.spyOn(globalThis, 'fetch').mockReturnValue(
       Promise.resolve({
         json: () => Promise.resolve(mockHealthData),
       } as Response)
     )
-    render(<ModelHealth />)
+    render(<ModelHealth expanded />)
     await waitFor(() => {
       expect(screen.getByText('70.0%')).toBeInTheDocument()
     })
+  })
+
+  it('invokes onExpand when Details is clicked', async () => {
+    vi.spyOn(globalThis, 'fetch').mockReturnValue(
+      Promise.resolve({
+        json: () => Promise.resolve(mockHealthData),
+      } as Response)
+    )
+    const onExpand = vi.fn()
+    render(<ModelHealth onExpand={onExpand} />)
+    await waitFor(() => {
+      expect(screen.getByText('Details')).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByText('Details'))
+    expect(onExpand).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the full breakdown only when expanded', async () => {
+    vi.spyOn(globalThis, 'fetch').mockReturnValue(
+      Promise.resolve({
+        json: () => Promise.resolve(mockHealthData),
+      } as Response)
+    )
+    const { rerender } = render(<ModelHealth expanded={false} />)
+    await waitFor(() => {
+      expect(screen.getByText('Healthy')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Confidence Distribution')).not.toBeInTheDocument()
+
+    rerender(<ModelHealth expanded />)
+    expect(screen.getByText('Confidence Distribution')).toBeInTheDocument()
+    expect(screen.getByText('Prediction Split')).toBeInTheDocument()
   })
 
   it('handles null avg_confidence', async () => {

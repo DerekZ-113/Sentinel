@@ -1,18 +1,71 @@
 @import "tailwindcss";
 
-/* Demo mode: new alert rows slide in with a brief highlight */
+/*
+ * Ground Control design tokens — the single source of truth for the visual
+ * language (see dashboard/DESIGN.md). Chart/SVG code mirrors these hexes in
+ * components/chartTheme.ts (SVG presentation attrs can't resolve var());
+ * a guard test keeps the two in sync.
+ */
+@theme {
+  /* Surfaces */
+  --color-canvas: #0B0E11;
+  --color-header: #0D1117;
+  --color-panel: #10141A;
+  --color-inset: #0C1015;
+
+  /* Lines */
+  --color-hairline: #1F262E;
+  --color-line: #161C23;
+  --color-hairline-2: #2A323B;
+
+  /* Ink */
+  --color-ink: #DEE5EC;
+  --color-ink-mid: #94A0AB;
+  --color-ink-low: #5A6672;
+  --color-ink-micro: #7A8791;
+  --color-ink-data: #B9C4CE;
+
+  /* State — the only use of color */
+  --color-ok: #3FB950;
+  --color-warn: #D9A040;
+  --color-crit: #E5534B;
+
+  /* Single interactive accent */
+  --color-accent: #56B4D3;
+
+  /* Notification-type tag hues */
+  --color-tag-stuck: #C9A85C;
+  --color-tag-verif: #6FA8CE;
+  --color-tag-ev: #D07070;
+  --color-tag-speed: #A98FD0;
+  --color-tag-impact: #CE9066;
+  --color-tag-pax: #63BFB4;
+
+  /* Fonts — mono is the app default; sans is opt-in for prose */
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-mono);
+  }
+}
+
+/* Demo mode: new alert rows announce themselves with a brief tint fade */
 @keyframes alert-in {
   from {
-    opacity: 0;
-    transform: translateY(-6px);
-    background-color: rgba(59, 130, 246, 0.14);
+    background-color: color-mix(in srgb, var(--color-ink) 10%, transparent);
   }
   60% {
-    background-color: rgba(59, 130, 246, 0.14);
+    background-color: color-mix(in srgb, var(--color-ink) 10%, transparent);
   }
   to {
-    opacity: 1;
-    transform: translateY(0);
     background-color: transparent;
   }
 }
@@ -21,8 +74,23 @@
   animation: alert-in 700ms ease-out;
 }
 
+/* KPI values: snap to the new number, flash briefly (ValueFlash) */
+@keyframes value-flash {
+  from {
+    background-color: color-mix(in srgb, var(--color-ink) 14%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+.value-flash {
+  animation: value-flash 500ms ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .alert-row-in {
+  .alert-row-in,
+  .value-flash {
     animation: none;
   }
 }

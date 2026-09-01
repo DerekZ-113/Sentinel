@@ -5,6 +5,7 @@
 
 import SimulatePanel from "./SimulatePanel";
 import DrawerShell from "./DrawerShell";
+import { IconX } from "./icons";
 
 interface LiveSimulateDrawerProps {
   open: boolean;
@@ -24,15 +25,15 @@ export default function LiveSimulateDrawer({
     >
       <div className="p-5 space-y-4">
         <div className="flex items-center justify-between">
-          <p className="text-xs text-gray-500">
+          <p className="text-[10px] text-ink-low">
             Run a notification payload against the model API.
           </p>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-white text-lg leading-none px-1 ml-3"
+            className="text-ink-low hover:text-ink px-1 ml-3"
             aria-label="Close simulate"
           >
-            ✕
+            <IconX size={14} />
           </button>
         </div>
         <SimulatePanel />

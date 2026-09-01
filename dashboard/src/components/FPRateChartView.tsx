@@ -9,6 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { CHART, AXIS_TICK, TOOLTIP_STYLE } from "./chartTheme";
 
 function formatHour(isoString: string): string {
   const d = new Date(isoString);
@@ -46,11 +47,13 @@ export default function FPRateChartView({
   }));
 
   return (
-    <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-4">
+    <div className="bg-panel border border-hairline rounded-xs p-4">
       {/* Header */}
       <div className="flex items-center justify-between mb-2.5">
-        <h2 className="text-base font-semibold text-white">FP Rate Over Time</h2>
-        <span className="text-xs text-gray-500">
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-mid">
+          FP Rate Over Time
+        </h2>
+        <span className="text-[10px] text-ink-low">
           {windowLabel ?? `Last ${data.time_window_hours} hours`}
         </span>
       </div>
@@ -61,56 +64,47 @@ export default function FPRateChartView({
           <span
             className="inline-block"
             style={{
-              width: 10,
-              height: 10,
-              background: "#ef4444",
-              borderRadius: 2,
+              width: 8,
+              height: 8,
+              background: CHART.crit,
+              borderRadius: 1,
             }}
           />
-          <span className="text-xs text-gray-400">FP Rate</span>
+          <span className="text-[10px] text-ink-mid">FP Rate</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span
             className="inline-block"
             style={{
-              width: 10,
-              height: 10,
-              background: "#10b981",
-              borderRadius: 2,
+              width: 8,
+              height: 8,
+              background: CHART.ok,
+              borderRadius: 1,
             }}
           />
-          <span className="text-xs text-gray-400">Accuracy</span>
+          <span className="text-[10px] text-ink-mid">Accuracy</span>
         </div>
       </div>
 
       {/* Chart */}
       <ResponsiveContainer width="100%" height={chartHeight}>
         <ComposedChart data={chartData}>
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="rgba(55,65,81,0.3)"
-          />
+          <CartesianGrid strokeDasharray="3 3" stroke={CHART.line} />
           <XAxis
             dataKey="time_label"
-            tick={{ fill: "#9ca3af", fontSize: 12 }}
-            axisLine={{ stroke: "#374151" }}
+            tick={AXIS_TICK}
+            axisLine={{ stroke: CHART.hairlineStrong }}
             tickLine={false}
           />
           <YAxis
-            tick={{ fill: "#9ca3af", fontSize: 12 }}
+            tick={AXIS_TICK}
             axisLine={false}
             tickLine={false}
             tickFormatter={(v: number) => `${v}%`}
             domain={[0, 100]}
           />
           <Tooltip
-            contentStyle={{
-              backgroundColor: "#1f2937",
-              border: "1px solid #374151",
-              borderRadius: "8px",
-              color: "#f3f4f6",
-              fontSize: "13px",
-            }}
+            contentStyle={TOOLTIP_STYLE}
             cursor={{ stroke: "rgba(255,255,255,0.1)" }}
             formatter={(value, name) => [
               `${Number(value ?? 0).toFixed(1)}%`,
@@ -121,20 +115,20 @@ export default function FPRateChartView({
           <Area
             type="monotone"
             dataKey="fp_rate"
-            stroke="#ef4444"
+            stroke={CHART.crit}
             strokeWidth={2}
-            fill="#ef4444"
+            fill={CHART.crit}
             fillOpacity={0.08}
-            dot={{ r: 3, fill: "#ef4444" }}
+            dot={{ r: 3, fill: CHART.crit }}
             connectNulls
             isAnimationActive={animate}
           />
           <Line
             type="monotone"
             dataKey="accuracy"
-            stroke="#10b981"
+            stroke={CHART.ok}
             strokeWidth={2}
-            dot={{ r: 3, fill: "#10b981" }}
+            dot={{ r: 3, fill: CHART.ok }}
             connectNulls
             isAnimationActive={animate}
           />

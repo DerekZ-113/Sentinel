@@ -80,7 +80,7 @@ describe('SimulatePanel', () => {
     await user.click(screen.getByText('Run Prediction'))
 
     await waitFor(() => {
-      expect(screen.getByText(/Suppress/)).toBeInTheDocument()
+      expect(screen.getByText(/Suppress — Likely False Positive/)).toBeInTheDocument()
     })
   })
 

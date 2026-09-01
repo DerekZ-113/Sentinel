@@ -14,29 +14,24 @@ interface TopBarProps {
 
 export default function TopBar({ health, children }: TopBarProps) {
   return (
-    <header className="sticky top-0 z-20 px-4 md:px-6 py-2.5 bg-gray-950/90 backdrop-blur-sm border-b border-gray-800">
+    <header className="sticky top-0 z-20 px-4 md:px-6 py-2.5 bg-header border-b border-hairline">
       <div className="flex items-center gap-x-4 gap-y-1 flex-wrap text-xs">
-        <div className="flex items-center gap-2.5">
-          <div className="h-7 w-7 rounded-lg bg-blue-600 flex items-center justify-center text-xs font-bold">
-            S
-          </div>
-          <div>
-            <h1 className="text-sm font-bold tracking-tight leading-tight">
-              Sentinel
-            </h1>
-            <p className="text-gray-500 text-[10px] leading-tight">
-              Fleet Alert Monitoring
-            </p>
-          </div>
+        <div className="leading-tight">
+          <h1 className="text-xs font-semibold uppercase tracking-[0.18em] text-ink">
+            Sentinel
+          </h1>
+          <p className="text-ink-micro text-[9px] uppercase tracking-[0.1em]">
+            Fleet Alert Monitoring
+          </p>
         </div>
 
         <div className="flex items-center gap-2">
           <span
-            className={`h-1.5 w-1.5 rounded-full ${
-              health.status === "healthy" ? "bg-emerald-400" : "bg-red-400"
+            className={`h-1.5 w-1.5 ${
+              health.status === "healthy" ? "bg-ok" : "bg-crit"
             }`}
           />
-          <span className="text-gray-500 text-[11px]">
+          <span className="text-ink-low text-[11px]">
             {health.status} · {health.model_features} features
           </span>
         </div>

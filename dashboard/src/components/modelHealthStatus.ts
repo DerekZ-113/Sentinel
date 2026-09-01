@@ -8,7 +8,7 @@ export const STATUS_CONFIG: Record<
   string,
   { color: string; bg: string; label: string }
 > = {
-  healthy: { color: "text-emerald-400", bg: "bg-emerald-400", label: "Healthy" },
-  warning: { color: "text-yellow-400", bg: "bg-yellow-400", label: "Warning" },
-  degraded: { color: "text-red-400", bg: "bg-red-400", label: "Degraded" },
+  healthy: { color: "text-ok", bg: "bg-ok", label: "Healthy" },
+  warning: { color: "text-warn", bg: "bg-warn", label: "Warning" },
+  degraded: { color: "text-crit", bg: "bg-crit", label: "Degraded" },
 };

@@ -10,9 +10,10 @@ import { relativeTime } from "../demo/format";
 import type { DemoAlert, ReplayEngine } from "../demo/types";
 import { evaluateRules } from "../services/decisionRules";
 import type { NotificationPayload } from "../services/api";
-import { TypeBadge } from "./alertRowParts";
+import { TypeBadge, VerdictChip } from "./alertRowParts";
 import SectorMap from "./SectorMap";
 import DrawerShell from "./DrawerShell";
+import { IconX } from "./icons";
 
 const THRESHOLD = 0.5;
 const HISTORY_SIZE = 6;
@@ -36,9 +37,9 @@ function payloadFromAlert(alert: DemoAlert): NotificationPayload {
 }
 
 const FACTOR_STYLES: Record<string, string> = {
-  flag: "bg-red-900/30 border-red-800/50 text-red-300",
-  suppress: "bg-emerald-900/30 border-emerald-800/50 text-emerald-300",
-  context: "bg-gray-800/60 border-gray-700/50 text-gray-300",
+  flag: "bg-crit/10 border-crit/40 text-crit",
+  suppress: "bg-ok/10 border-ok/40 text-ok",
+  context: "bg-inset border-line text-ink-data",
 };
 
 interface AlertDetailDrawerProps {
@@ -84,11 +85,11 @@ export default function AlertDetailDrawer({
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-lg font-semibold text-white font-mono">
+                <h2 className="text-base font-semibold text-ink">
                   {alert.vehicle_id}
                 </h2>
                 {alert.source === "manual" && (
-                  <span className="px-1.5 py-0.5 rounded text-[10px] bg-blue-900/60 text-blue-300 border border-blue-800/50">
+                  <span className="px-1.5 py-0.5 rounded-xs text-[9px] uppercase tracking-[0.08em] text-accent border border-accent/40 bg-accent/14">
                     manual
                   </span>
                 )}
@@ -98,40 +99,41 @@ export default function AlertDetailDrawer({
                   type={alert.notification_type}
                   subtype={alert.notification_subtype}
                 />
-                <span className="text-xs text-gray-500 tabular-nums">
+                <span className="text-xs text-ink-low tabular-nums">
                   {relativeTime(now, alert.time)}
                 </span>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="text-gray-500 hover:text-white text-lg leading-none px-1"
+              className="text-ink-low hover:text-ink px-1"
               aria-label="Close detail"
             >
-              ✕
+              <IconX size={14} />
             </button>
           </div>
 
           {/* Verdict */}
           <div
-            className={`rounded-lg border p-3 ${
+            className={`rounded-xs border p-3 ${
               flagged
-                ? "bg-red-900/20 border-red-800/50"
-                : "bg-emerald-900/20 border-emerald-800/50"
+                ? "bg-crit/10 border-crit/40"
+                : "bg-ok/10 border-ok/40"
             }`}
           >
             <div className="flex items-center justify-between">
               <p
-                className={`font-bold ${flagged ? "text-red-400" : "text-emerald-400"}`}
+                className={`flex items-center gap-2 text-[12px] font-semibold ${flagged ? "text-crit" : "text-ok"}`}
               >
-                {flagged ? "⚠ Flagged for review" : "✓ Suppressed"}
+                <VerdictChip flagged={flagged} />
+                <span>{flagged ? "Flagged for review" : "Suppressed"}</span>
               </p>
               {alert.needs_intervention_actual !== null && (
                 <span
-                  className={`text-xs px-2 py-0.5 rounded-full border ${
+                  className={`text-[10px] px-2 py-0.5 rounded-xs border ${
                     correct
-                      ? "bg-emerald-900/40 border-emerald-800/50 text-emerald-300"
-                      : "bg-red-900/40 border-red-800/50 text-red-300"
+                      ? "bg-ok/14 border-ok/40 text-ok"
+                      : "bg-crit/14 border-crit/40 text-crit"
                   }`}
                 >
                   {alert.needs_intervention_actual
@@ -144,20 +146,20 @@ export default function AlertDetailDrawer({
 
             {/* Score vs threshold */}
             <div className="mt-3">
-              <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+              <div className="flex justify-between text-[10px] text-ink-micro mb-1">
                 <span>
                   Model score:{" "}
-                  <span className="text-gray-300 font-mono">{rawScore.toFixed(3)}</span>
+                  <span className="text-ink-data tabular-nums">{rawScore.toFixed(3)}</span>
                 </span>
-                <span>threshold {THRESHOLD}</span>
+                <span className="tabular-nums">threshold {THRESHOLD}</span>
               </div>
-              <div className="relative h-2 bg-gray-800 rounded-full overflow-hidden">
+              <div className="relative h-[3px] bg-inset overflow-hidden">
                 <div
-                  className={`h-full rounded-full ${flagged ? "bg-red-500" : "bg-emerald-500"}`}
+                  className={`h-full ${flagged ? "bg-crit" : "bg-ok"}`}
                   style={{ width: `${Math.min(100, rawScore * 100)}%` }}
                 />
                 <div
-                  className="absolute top-0 h-full w-px bg-gray-400"
+                  className="absolute top-0 h-full w-px bg-ink-low"
                   style={{ left: `${THRESHOLD * 100}%` }}
                 />
               </div>
@@ -166,12 +168,12 @@ export default function AlertDetailDrawer({
 
           {/* Context signals */}
           <div>
-            <p className="text-xs text-gray-400 font-medium mb-2">Context signals</p>
+            <p className="text-[10px] uppercase tracking-[0.1em] text-ink-micro mb-2">Context signals</p>
             <div className="space-y-2">
               {factors.map((factor) => (
                 <div
                   key={factor.label}
-                  className={`rounded-lg border px-3 py-2 ${FACTOR_STYLES[factor.direction]}`}
+                  className={`rounded-xs border px-3 py-2 ${FACTOR_STYLES[factor.direction]}`}
                 >
                   <p className="text-xs font-semibold">{factor.label}</p>
                   <p className="text-[11px] opacity-80 mt-0.5">{factor.detail}</p>
@@ -182,7 +184,7 @@ export default function AlertDetailDrawer({
 
           {/* Location */}
           <div>
-            <p className="text-xs text-gray-400 font-medium mb-2">Location</p>
+            <p className="text-[10px] uppercase tracking-[0.1em] text-ink-micro mb-2">Location</p>
             <SectorMap
               latitude={alert.latitude}
               longitude={alert.longitude}
@@ -192,7 +194,7 @@ export default function AlertDetailDrawer({
 
           {/* Telemetry */}
           <div>
-            <p className="text-xs text-gray-400 font-medium mb-2">Telemetry</p>
+            <p className="text-[10px] uppercase tracking-[0.1em] text-ink-micro mb-2">Telemetry</p>
             <div className="grid grid-cols-2 gap-2">
               <TelemetryCell label="Speed" value={fmtNumber(alert.speed, " mph")} />
               <TelemetryCell
@@ -235,11 +237,11 @@ export default function AlertDetailDrawer({
 
           {/* Vehicle history */}
           <div>
-            <p className="text-xs text-gray-400 font-medium mb-2">
+            <p className="text-[10px] uppercase tracking-[0.1em] text-ink-micro mb-2">
               Recent activity — {alert.vehicle_id}
             </p>
             {history.length === 0 ? (
-              <p className="text-xs text-gray-600">
+              <p className="text-xs text-ink-low">
                 No other alerts from this vehicle in the current window.
               </p>
             ) : (
@@ -248,23 +250,17 @@ export default function AlertDetailDrawer({
                   <li key={event.id}>
                     <button
                       onClick={() => onSelect(event)}
-                      className="w-full flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-gray-800/60 transition-colors text-left"
+                      className="w-full flex items-center gap-2 rounded-xs px-2 py-1.5 hover:bg-ink/5 transition-colors text-left"
                     >
-                      <span className="text-[11px] text-gray-500 tabular-nums w-16 shrink-0">
+                      <span className="text-[11px] text-ink-low tabular-nums w-16 shrink-0">
                         {relativeTime(now, event.time)}
                       </span>
                       <TypeBadge
                         type={event.notification_type}
                         subtype={event.notification_subtype}
                       />
-                      <span
-                        className={`ml-auto text-xs font-medium ${
-                          event.needs_intervention_predicted
-                            ? "text-red-400"
-                            : "text-emerald-400"
-                        }`}
-                      >
-                        {event.needs_intervention_predicted ? "⚠" : "✓"}
+                      <span className="ml-auto">
+                        <VerdictChip flagged={event.needs_intervention_predicted} />
                       </span>
                     </button>
                   </li>
@@ -279,9 +275,9 @@ export default function AlertDetailDrawer({
 
 function TelemetryCell({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-gray-800/50 rounded-lg px-3 py-2">
-      <p className="text-gray-500 text-[10px] uppercase tracking-wide">{label}</p>
-      <p className="text-sm text-gray-200 font-medium">{value}</p>
+    <div className="bg-inset border border-line rounded-xs px-3 py-2">
+      <p className="text-ink-micro text-[10px] uppercase tracking-[0.1em]">{label}</p>
+      <p className="text-[12px] text-ink-data font-medium">{value}</p>
     </div>
   );
 }

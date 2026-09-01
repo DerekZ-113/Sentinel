@@ -10,7 +10,8 @@ import { getEngine } from "../demo/engineInstance";
 import { useEngineSnapshot, useNow } from "../demo/useEngine";
 import { relativeTime } from "../demo/format";
 import type { DemoAlert, ReplayEngine } from "../demo/types";
-import { ConfidenceBar, TypeBadge } from "./alertRowParts";
+import { ConfidenceBar, TypeBadge, VerdictChip } from "./alertRowParts";
+import { IconArrowUp } from "./icons";
 
 const FEED_SIZE = 50;
 
@@ -78,10 +79,12 @@ export default function LiveAlertFeed({
   }
 
   return (
-    <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-5 overflow-hidden max-h-[420px] lg:max-h-none lg:h-full min-h-0 flex flex-col relative">
+    <div className="bg-panel border border-hairline rounded-xs p-5 overflow-hidden max-h-[420px] lg:max-h-none lg:h-full min-h-0 flex flex-col relative">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-white">Alert Stream</h2>
-        <span className="text-xs text-gray-500 tabular-nums">
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-mid">
+          Alert Stream
+        </h2>
+        <span className="text-[10px] text-ink-low tabular-nums">
           {snapshot.totalDealt.toLocaleString()} this shift
         </span>
       </div>
@@ -89,9 +92,10 @@ export default function LiveAlertFeed({
       {pending > 0 && (
         <button
           onClick={resume}
-          className="absolute left-1/2 -translate-x-1/2 top-14 z-10 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium px-3 py-1 rounded-full shadow-lg transition-colors"
+          className="absolute left-1/2 -translate-x-1/2 top-14 z-10 flex items-center gap-1.5 bg-accent hover:bg-accent/85 text-canvas text-[10px] font-medium uppercase tracking-[0.1em] px-3 py-1 rounded-xs transition-colors"
         >
-          {pending} new {pending === 1 ? "alert" : "alerts"} ↑
+          {pending} new {pending === 1 ? "alert" : "alerts"}
+          <IconArrowUp size={9} />
         </button>
       )}
 
@@ -104,20 +108,20 @@ export default function LiveAlertFeed({
       >
         <table className="w-full text-sm table-fixed">
           <thead>
-            <tr className="text-gray-400 text-xs uppercase">
-              <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700/50 text-left py-2 pr-3 w-16">
+            <tr className="text-ink-micro text-[10px] uppercase tracking-[0.1em]">
+              <th className="sticky top-0 z-10 bg-panel border-b border-hairline-2 text-left py-2 pr-3 w-16">
                 Time
               </th>
-              <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700/50 text-left py-2 pr-3 w-32">
+              <th className="sticky top-0 z-10 bg-panel border-b border-hairline-2 text-left py-2 pr-3 w-32">
                 Vehicle
               </th>
-              <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700/50 text-left py-2 pr-3">
+              <th className="sticky top-0 z-10 bg-panel border-b border-hairline-2 text-left py-2 pr-3">
                 Type
               </th>
-              <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700/50 text-left py-2 pr-3 w-24">
+              <th className="sticky top-0 z-10 bg-panel border-b border-hairline-2 text-left py-2 pr-3 w-24">
                 Prediction
               </th>
-              <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700/50 text-right py-2 w-20">
+              <th className="sticky top-0 z-10 bg-panel border-b border-hairline-2 text-right py-2 w-20">
                 Confidence
               </th>
             </tr>
@@ -127,17 +131,17 @@ export default function LiveAlertFeed({
               <tr
                 key={alert.id}
                 onClick={() => onSelect?.(alert)}
-                className={`border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors ${
+                className={`border-b border-line hover:bg-ink/5 transition-colors ${
                   onSelect ? "cursor-pointer" : ""
                 } ${alert.id > initialNewestId ? "alert-row-in" : ""}`}
               >
-                <td className="py-2.5 pr-3 text-gray-500 text-xs whitespace-nowrap tabular-nums">
+                <td className="py-2.5 pr-3 text-ink-low text-xs whitespace-nowrap tabular-nums">
                   {relativeTime(now, alert.time)}
                 </td>
-                <td className="py-2.5 pr-3 text-gray-300 font-mono text-xs whitespace-nowrap">
+                <td className="py-2.5 pr-3 text-ink-data text-xs whitespace-nowrap">
                   {alert.vehicle_id}
                   {alert.source === "manual" && (
-                    <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded text-[10px] bg-blue-900/60 text-blue-300 border border-blue-800/50 font-sans">
+                    <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded-xs text-[9px] uppercase tracking-[0.08em] text-accent border border-accent/40 bg-accent/14">
                       manual
                     </span>
                   )}
@@ -149,11 +153,7 @@ export default function LiveAlertFeed({
                   />
                 </td>
                 <td className="py-2.5 pr-3 whitespace-nowrap">
-                  {alert.needs_intervention_predicted ? (
-                    <span className="text-red-400 font-medium">⚠ Flag</span>
-                  ) : (
-                    <span className="text-emerald-400 font-medium">✓ Suppress</span>
-                  )}
+                  <VerdictChip flagged={alert.needs_intervention_predicted} />
                 </td>
                 <td className="py-2.5 text-right font-mono text-xs">
                   <ConfidenceBar value={alert.confidence} />

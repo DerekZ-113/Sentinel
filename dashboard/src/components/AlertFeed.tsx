@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchAlerts } from "../services/api";
 import type { AlertRecord } from "../services/api";
-import { ConfidenceBar, TypeBadge } from "./alertRowParts";
+import { ConfidenceBar, TypeBadge, VerdictChip } from "./alertRowParts";
+import { IconCheck, IconCross } from "./icons";
 
 const PAGE_SIZE = 50;
 
@@ -86,11 +87,11 @@ export default function AlertFeed({
 
   if (error) {
     return (
-      <div className="bg-red-900/20 border border-red-800/50 rounded-xl p-6 h-80 flex flex-col items-center justify-center gap-3">
-        <p className="text-red-400 text-sm">{error}</p>
+      <div className="bg-crit/10 border border-crit/40 rounded-xs p-6 h-80 flex flex-col items-center justify-center gap-3">
+        <p className="text-crit text-sm">{error}</p>
         <button
           onClick={retry}
-          className="text-xs text-red-300 hover:text-white border border-red-700 px-3 py-1 rounded-lg transition-colors"
+          className="text-[10px] uppercase tracking-[0.1em] text-crit hover:bg-crit/10 border border-crit/50 px-3 py-1 rounded-xs transition-colors"
         >
           Retry
         </button>
@@ -100,23 +101,25 @@ export default function AlertFeed({
 
   if (loading) {
     return (
-      <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-6 h-80 flex items-center justify-center text-gray-500">
+      <div className="bg-panel border border-hairline rounded-xs p-6 h-80 flex items-center justify-center text-ink-low">
         Loading alerts...
       </div>
     );
   }
 
   return (
-    <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-5 overflow-hidden max-h-[420px] lg:max-h-none lg:h-full min-h-0 flex flex-col">
+    <div className="bg-panel border border-hairline rounded-xs p-5 overflow-hidden max-h-[420px] lg:max-h-none lg:h-full min-h-0 flex flex-col">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-white">Recent Alerts</h2>
-        <span className="text-xs text-gray-500">
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-mid">
+          Recent Alerts
+        </h2>
+        <span className="text-[10px] text-ink-low tabular-nums">
           {total.toLocaleString()} total
         </span>
       </div>
 
       {refreshError && (
-        <p className="mb-3 rounded border border-yellow-700/40 bg-yellow-900/10 px-3 py-1.5 text-xs text-yellow-300/80">
+        <p className="mb-3 rounded-xs border border-warn/40 bg-warn/10 px-3 py-1.5 text-xs text-warn">
           {refreshError}
         </p>
       )}
@@ -124,23 +127,23 @@ export default function AlertFeed({
       <div ref={tableRef} className="overflow-auto flex-1">
         <table className="w-full text-sm table-fixed">
           <thead>
-            <tr className="text-gray-400 text-xs uppercase">
-              <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700/50 text-left py-2 pr-3 w-28">
+            <tr className="text-ink-micro text-[10px] uppercase tracking-[0.1em]">
+              <th className="sticky top-0 z-10 bg-panel border-b border-hairline-2 text-left py-2 pr-3 w-28">
                 Vehicle
               </th>
-              <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700/50 text-left py-2 pr-3">
+              <th className="sticky top-0 z-10 bg-panel border-b border-hairline-2 text-left py-2 pr-3">
                 Type
               </th>
-              <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700/50 text-left py-2 pr-3 w-24">
+              <th className="sticky top-0 z-10 bg-panel border-b border-hairline-2 text-left py-2 pr-3 w-24">
                 Prediction
               </th>
-              <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700/50 text-right py-2 pr-3 w-20">
+              <th className="sticky top-0 z-10 bg-panel border-b border-hairline-2 text-right py-2 pr-3 w-20">
                 Confidence
               </th>
-              <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700/50 text-left py-2 pr-3 w-14">
+              <th className="sticky top-0 z-10 bg-panel border-b border-hairline-2 text-left py-2 pr-3 w-14">
                 Actual
               </th>
-              <th className="sticky top-0 z-10 bg-gray-900 border-b border-gray-700/50 text-center py-2 w-16">
+              <th className="sticky top-0 z-10 bg-panel border-b border-hairline-2 text-center py-2 w-16">
                 Correct
               </th>
             </tr>
@@ -156,9 +159,9 @@ export default function AlertFeed({
               return (
                 <tr
                   key={alert.id}
-                  className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors"
+                  className="border-b border-line hover:bg-ink/5 transition-colors"
                 >
-                  <td className="py-2.5 pr-3 text-gray-300 font-mono text-xs">
+                  <td className="py-2.5 pr-3 text-ink-data text-xs">
                     {alert.vehicle_id}
                   </td>
                   <td className="py-2.5 pr-3">
@@ -168,35 +171,39 @@ export default function AlertFeed({
                     />
                   </td>
                   <td className="py-2.5 pr-3">
-                    {alert.needs_intervention_predicted ? (
-                      <span className="text-red-400 font-medium">
-                        ⚠ Flag
-                      </span>
-                    ) : (
-                      <span className="text-emerald-400 font-medium">
-                        ✓ Suppress
-                      </span>
-                    )}
+                    <VerdictChip flagged={alert.needs_intervention_predicted} />
                   </td>
                   <td className="py-2.5 pr-3 text-right font-mono text-xs">
                     <ConfidenceBar value={alert.confidence} />
                   </td>
                   <td className="py-2.5 pr-3 text-xs">
                     {alert.needs_intervention_actual === null ? (
-                      <span className="text-gray-600">—</span>
+                      <span className="text-ink-low">—</span>
                     ) : alert.needs_intervention_actual ? (
-                      <span className="text-red-300">Real</span>
+                      <span className="text-crit">Real</span>
                     ) : (
-                      <span className="text-gray-400">FP</span>
+                      <span className="text-ink-mid">FP</span>
                     )}
                   </td>
                   <td className="py-2.5 text-center">
                     {correct === null ? (
-                      <span className="text-gray-600">—</span>
+                      <span className="text-ink-low">—</span>
                     ) : correct ? (
-                      <span className="text-emerald-400">✓</span>
+                      <span
+                        role="img"
+                        aria-label="correct"
+                        className="inline-flex justify-center text-ok"
+                      >
+                        <IconCheck size={11} />
+                      </span>
                     ) : (
-                      <span className="text-red-400">✗</span>
+                      <span
+                        role="img"
+                        aria-label="incorrect"
+                        className="inline-flex justify-center text-crit"
+                      >
+                        <IconCross size={11} />
+                      </span>
                     )}
                   </td>
                 </tr>
@@ -207,21 +214,21 @@ export default function AlertFeed({
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between pt-3 border-t border-gray-700/50">
+      <div className="flex items-center justify-between pt-3 border-t border-hairline">
         <button
           onClick={() => goToPage(page - 1)}
           disabled={page === 0}
-          className="text-xs text-gray-400 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed border border-gray-700 px-3 py-1 rounded-lg transition-colors"
+          className="text-[10px] uppercase tracking-[0.1em] text-ink-mid hover:text-ink disabled:text-ink-low disabled:cursor-not-allowed border border-hairline-2 px-3 py-1 rounded-xs transition-colors"
         >
           Previous
         </button>
-        <span className="text-xs text-gray-500">
+        <span className="text-[10px] text-ink-low tabular-nums">
           Page {page + 1} of {totalPages}
         </span>
         <button
           onClick={() => goToPage(page + 1)}
           disabled={page >= totalPages - 1}
-          className="text-xs text-gray-400 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed border border-gray-700 px-3 py-1 rounded-lg transition-colors"
+          className="text-[10px] uppercase tracking-[0.1em] text-ink-mid hover:text-ink disabled:text-ink-low disabled:cursor-not-allowed border border-hairline-2 px-3 py-1 rounded-xs transition-colors"
         >
           Next
         </button>

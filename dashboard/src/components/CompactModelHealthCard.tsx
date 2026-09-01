@@ -20,12 +20,14 @@ export default function CompactModelHealthCard({
   const statusCfg = STATUS_CONFIG[data.status] || STATUS_CONFIG.warning;
 
   return (
-    <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-4 space-y-2.5">
+    <div className="bg-panel border border-hairline rounded-xs p-4 space-y-2.5">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-white">Model Health</h2>
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-mid">
+          Model Health
+        </h2>
         <div className="flex items-center gap-2">
-          <span className={`h-2.5 w-2.5 rounded-full ${statusCfg.bg}`} />
-          <span className={`text-sm font-medium ${statusCfg.color}`}>
+          <span className={`h-2 w-2 ${statusCfg.bg}`} />
+          <span className={`text-[11px] font-medium uppercase tracking-[0.1em] ${statusCfg.color}`}>
             {statusCfg.label}
           </span>
         </div>
@@ -45,10 +47,10 @@ export default function CompactModelHealthCard({
           }
           color={
             data.avg_confidence !== null && data.avg_confidence >= 0.9
-              ? "text-emerald-400"
+              ? "text-ok"
               : data.avg_confidence !== null && data.avg_confidence >= 0.7
-              ? "text-yellow-400"
-              : "text-red-400"
+              ? "text-warn"
+              : "text-crit"
           }
         />
         <MiniCard
@@ -60,17 +62,17 @@ export default function CompactModelHealthCard({
           }
           color={
             data.accuracy !== null && data.accuracy >= 0.8
-              ? "text-emerald-400"
+              ? "text-ok"
               : data.accuracy !== null && data.accuracy >= 0.6
-              ? "text-yellow-400"
-              : "text-red-400"
+              ? "text-warn"
+              : "text-crit"
           }
         />
       </div>
 
       <button
         onClick={onExpand}
-        className="w-full text-xs text-gray-400 hover:text-white border border-gray-700 rounded-lg py-1.5 transition-colors"
+        className="w-full text-[10px] uppercase tracking-[0.1em] text-ink-mid hover:text-ink border border-hairline-2 rounded-xs py-1.5 transition-colors"
       >
         Details
       </button>

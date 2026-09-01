@@ -50,12 +50,12 @@ describe("StatusBar", () => {
     render(
       <StatusBar health={HEALTH} onSimulate={() => {}} engine={makeTestEngine()} />
     );
-    expect(screen.getByText(clockTime(T0))).toBeInTheDocument();
+    expect(screen.getByText(clockTime(T0) + "Z")).toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(1000);
     });
-    expect(screen.getByText(clockTime(T0 + 1000))).toBeInTheDocument();
+    expect(screen.getByText(clockTime(T0 + 1000) + "Z")).toBeInTheDocument();
   });
 
   it("invokes onSimulate when the Simulate button is clicked", () => {
@@ -67,12 +67,11 @@ describe("StatusBar", () => {
     expect(onSimulate).toHaveBeenCalledTimes(1);
   });
 
-  it("dismisses the synthetic-replay notice", () => {
+  it("always shows the SIM annunciator (no dismiss control)", () => {
     render(
       <StatusBar health={HEALTH} onSimulate={() => {}} engine={makeTestEngine()} />
     );
     expect(screen.getByText(/Synthetic replay/)).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText("Dismiss notice"));
-    expect(screen.queryByText(/Synthetic replay/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Dismiss notice")).not.toBeInTheDocument();
   });
 });

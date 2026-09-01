@@ -1,5 +1,6 @@
 import type { ModelHealthResponse } from "../services/api";
 import { STATUS_CONFIG } from "./modelHealthStatus";
+import { CHART, CONF_COLORS, AXIS_TICK, TOOLTIP_STYLE } from "./chartTheme";
 import {
   BarChart,
   Bar,
@@ -11,12 +12,6 @@ import {
   Pie,
   Cell,
 } from "recharts";
-
-const CONF_COLORS = {
-  high: "#10b981",
-  medium: "#f59e0b",
-  low: "#ef4444",
-};
 
 interface ModelHealthViewProps {
   data: ModelHealthResponse;
@@ -34,18 +29,20 @@ export default function ModelHealthView({ data, animate = true }: ModelHealthVie
   ];
 
   const predSplit = [
-    { name: "Suppressed", value: Math.round(data.pct_suppressed * 10) / 10, fill: "#10b981" },
-    { name: "Flagged", value: Math.round(data.pct_flagged * 10) / 10, fill: "#ef4444" },
+    { name: "Suppressed", value: Math.round(data.pct_suppressed * 10) / 10, fill: CHART.ok },
+    { name: "Flagged", value: Math.round(data.pct_flagged * 10) / 10, fill: CHART.crit },
   ];
 
   return (
-    <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-5 space-y-5">
+    <div className="bg-panel border border-hairline rounded-xs p-5 space-y-5">
       {/* Header + Status */}
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-white">Model Health</h2>
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-mid">
+          Model Health
+        </h2>
         <div className="flex items-center gap-2">
-          <span className={`h-2.5 w-2.5 rounded-full ${statusCfg.bg}`} />
-          <span className={`text-sm font-medium ${statusCfg.color}`}>
+          <span className={`h-2 w-2 ${statusCfg.bg}`} />
+          <span className={`text-[11px] font-medium uppercase tracking-[0.1em] ${statusCfg.color}`}>
             {statusCfg.label}
           </span>
         </div>
@@ -62,10 +59,10 @@ export default function ModelHealthView({ data, animate = true }: ModelHealthVie
           value={data.avg_confidence !== null ? `${(data.avg_confidence * 100).toFixed(1)}%` : "N/A"}
           color={
             data.avg_confidence !== null && data.avg_confidence >= 0.9
-              ? "text-emerald-400"
+              ? "text-ok"
               : data.avg_confidence !== null && data.avg_confidence >= 0.7
-              ? "text-yellow-400"
-              : "text-red-400"
+              ? "text-warn"
+              : "text-crit"
           }
         />
         <MiniCard
@@ -73,16 +70,15 @@ export default function ModelHealthView({ data, animate = true }: ModelHealthVie
           value={data.accuracy !== null ? `${(data.accuracy * 100).toFixed(1)}%` : "N/A"}
           color={
             data.accuracy !== null && data.accuracy >= 0.8
-              ? "text-emerald-400"
+              ? "text-ok"
               : data.accuracy !== null && data.accuracy >= 0.6
-              ? "text-yellow-400"
-              : "text-red-400"
+              ? "text-warn"
+              : "text-crit"
           }
         />
         <MiniCard
           label="Suppression Rate"
           value={`${data.pct_suppressed.toFixed(1)}%`}
-          color="text-blue-400"
         />
       </div>
 
@@ -90,30 +86,22 @@ export default function ModelHealthView({ data, animate = true }: ModelHealthVie
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Confidence Distribution */}
         <div>
-          <p className="text-xs text-gray-400 mb-2 font-medium">Confidence Distribution</p>
+          <p className="text-[10px] uppercase tracking-[0.1em] text-ink-micro mb-2">Confidence Distribution</p>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={confData} barSize={40}>
               <XAxis
                 dataKey="name"
-                tick={{ fill: "#9ca3af", fontSize: 11 }}
+                tick={AXIS_TICK}
                 axisLine={false}
                 tickLine={false}
               />
               <YAxis
-                tick={{ fill: "#9ca3af", fontSize: 11 }}
+                tick={AXIS_TICK}
                 axisLine={false}
                 tickLine={false}
               />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "#1f2937",
-                  border: "1px solid #374151",
-                  borderRadius: "8px",
-                  color: "#f3f4f6",
-                  fontSize: "12px",
-                }}
-              />
-              <Bar dataKey="value" radius={[4, 4, 0, 0]} isAnimationActive={animate}>
+              <Tooltip contentStyle={TOOLTIP_STYLE} />
+              <Bar dataKey="value" radius={[2, 2, 0, 0]} isAnimationActive={animate}>
                 {confData.map((entry, i) => (
                   <Cell key={i} fill={entry.fill} />
                 ))}
@@ -124,7 +112,7 @@ export default function ModelHealthView({ data, animate = true }: ModelHealthVie
 
         {/* Prediction Split */}
         <div>
-          <p className="text-xs text-gray-400 mb-2 font-medium">Prediction Split</p>
+          <p className="text-[10px] uppercase tracking-[0.1em] text-ink-micro mb-2">Prediction Split</p>
           <div className="flex items-center justify-center gap-6">
             <ResponsiveContainer width={160} height={160}>
               <PieChart>
@@ -148,11 +136,11 @@ export default function ModelHealthView({ data, animate = true }: ModelHealthVie
               {predSplit.map((item) => (
                 <div key={item.name} className="flex items-center gap-2">
                   <span
-                    className="h-2.5 w-2.5 rounded-sm"
+                    className="h-2 w-2"
                     style={{ backgroundColor: item.fill }}
                   />
-                  <span className="text-xs text-gray-400">
-                    {item.name}: <span className="text-white font-medium">{item.value}%</span>
+                  <span className="text-[11px] text-ink-mid">
+                    {item.name}: <span className="text-ink font-medium tabular-nums">{item.value}%</span>
                   </span>
                 </div>
               ))}
@@ -167,16 +155,16 @@ export default function ModelHealthView({ data, animate = true }: ModelHealthVie
 export function MiniCard({
   label,
   value,
-  color = "text-white",
+  color = "text-ink",
 }: {
   label: string;
   value: string;
   color?: string;
 }) {
   return (
-    <div className="bg-gray-900/50 rounded-lg px-3 py-2.5">
-      <p className="text-gray-500 text-[10px] uppercase tracking-wide">{label}</p>
-      <p className={`text-lg font-bold ${color}`}>{value}</p>
+    <div className="bg-inset border border-line rounded-xs px-3 py-2.5">
+      <p className="text-ink-micro text-[10px] uppercase tracking-[0.1em]">{label}</p>
+      <p className={`text-base font-medium tabular-nums ${color}`}>{value}</p>
     </div>
   );
 }

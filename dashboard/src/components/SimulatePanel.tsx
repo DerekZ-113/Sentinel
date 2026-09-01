@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { postPredict } from "../services/api";
 import type { NotificationPayload, PredictionResponse } from "../services/api";
+import { VerdictChip } from "./alertRowParts";
 
 const NOTIFICATION_TYPES = [
   "stuck",
@@ -74,8 +75,8 @@ export default function SimulatePanel({ onResult }: SimulatePanelProps) {
   }
 
   return (
-    <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-5">
-      <h2 className="text-lg font-semibold text-white mb-4">
+    <div className="bg-panel border border-hairline rounded-xs p-5">
+      <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-mid mb-4">
         Simulate Notification
       </h2>
 
@@ -137,13 +138,15 @@ export default function SimulatePanel({ onResult }: SimulatePanelProps) {
         {/* Object in Path */}
         {showObject && (
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Object in Path</label>
+            <label className="block text-[10px] uppercase tracking-[0.1em] text-ink-micro mb-1">
+              Object in Path
+            </label>
             <button
               onClick={() => setObjectInPath(!objectInPath)}
-              className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors w-full ${
+              className={`px-3 py-2 rounded-xs text-[11px] uppercase tracking-[0.05em] font-medium border transition-colors w-full ${
                 objectInPath
-                  ? "bg-red-900/40 border-red-700/50 text-red-300"
-                  : "bg-gray-700/40 border-gray-600/50 text-gray-400"
+                  ? "bg-crit/14 border-crit/40 text-crit"
+                  : "bg-inset border-hairline-2 text-ink-mid"
               }`}
             >
               {objectInPath ? "Yes — Obstruction" : "No — Clear"}
@@ -156,43 +159,40 @@ export default function SimulatePanel({ onResult }: SimulatePanelProps) {
       <button
         onClick={handlePredict}
         disabled={loading}
-        className="bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:text-blue-400
-                   text-white font-medium px-6 py-2.5 rounded-lg transition-colors"
+        className="border border-accent/60 text-accent hover:bg-accent/10 disabled:border-hairline-2 disabled:text-ink-low disabled:hover:bg-transparent rounded-xs px-6 py-2.5 text-[11px] font-medium uppercase tracking-[0.1em] transition-colors"
       >
         {loading ? "Predicting..." : "Run Prediction"}
       </button>
 
       {/* Error */}
       {error && (
-        <div className="mt-5 p-4 rounded-lg border bg-red-900/20 border-red-800/50">
-          <p className="text-red-400 text-sm">Prediction failed: {error}</p>
+        <div className="mt-5 p-4 rounded-xs border bg-crit/10 border-crit/40">
+          <p className="text-crit text-sm">Prediction failed: {error}</p>
         </div>
       )}
 
       {/* Result */}
       {result && (
         <div
-          className={`mt-5 p-4 rounded-lg border ${
+          className={`mt-5 p-4 rounded-xs border ${
             result.needs_intervention
-              ? "bg-red-900/20 border-red-800/50"
-              : "bg-emerald-900/20 border-emerald-800/50"
+              ? "bg-crit/10 border-crit/40"
+              : "bg-ok/10 border-ok/40"
           }`}
         >
           <div className="flex items-center gap-3 mb-2">
-            <span className="text-2xl">
-              {result.needs_intervention ? "⚠️" : "✅"}
-            </span>
+            <VerdictChip flagged={result.needs_intervention} />
             <div>
               <p
-                className={`text-lg font-bold ${
-                  result.needs_intervention ? "text-red-400" : "text-emerald-400"
+                className={`text-[13px] font-semibold ${
+                  result.needs_intervention ? "text-crit" : "text-ok"
                 }`}
               >
                 {result.needs_intervention
                   ? "Flag — Intervention Needed"
                   : "Suppress — Likely False Positive"}
               </p>
-              <p className="text-gray-400 text-sm">
+              <p className="text-ink-mid text-[11px] tabular-nums">
                 Confidence: {(result.confidence * 100).toFixed(1)}% •
                 Raw score: {result.raw_score.toFixed(4)}
               </p>
@@ -221,12 +221,14 @@ function SelectField({
 }) {
   return (
     <div>
-      <label className="block text-xs text-gray-400 mb-1">{label}</label>
+      <label className="block text-[10px] uppercase tracking-[0.1em] text-ink-micro mb-1">
+        {label}
+      </label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-gray-700/60 border border-gray-600/50 rounded-lg px-3 py-2
-                   text-sm text-white focus:outline-none focus:border-blue-500"
+        className="w-full bg-inset border border-hairline-2 rounded-xs px-3 py-2
+                   text-[12px] text-ink-data focus:outline-none focus:border-accent"
       >
         {options.map((opt) => (
           <option key={opt} value={opt}>
@@ -257,8 +259,8 @@ function SliderField({
 }) {
   return (
     <div>
-      <label className="block text-xs text-gray-400 mb-1">
-        {label}: <span className="text-white font-medium">{value}{unit && ` ${unit}`}</span>
+      <label className="block text-[10px] uppercase tracking-[0.1em] text-ink-micro mb-1">
+        {label}: <span className="text-ink font-medium tabular-nums">{value}{unit && ` ${unit}`}</span>
       </label>
       <input
         type="range"
@@ -267,7 +269,7 @@ function SliderField({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-blue-500"
+        className="w-full accent-accent"
       />
     </div>
   );

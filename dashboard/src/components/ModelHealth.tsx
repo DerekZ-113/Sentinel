@@ -4,6 +4,7 @@ import type { ModelHealthResponse } from "../services/api";
 import ModelHealthView from "./ModelHealthView";
 import CompactModelHealthCard from "./CompactModelHealthCard";
 import DrawerShell from "./DrawerShell";
+import { IconX } from "./icons";
 
 interface ModelHealthProps {
   refreshToken?: number;
@@ -65,11 +66,11 @@ export default function ModelHealth({
 
   if (error) {
     return (
-      <div className="bg-red-900/20 border border-red-800/50 rounded-xl p-6 flex flex-col items-center justify-center gap-3 h-64">
-        <p className="text-red-400 text-sm">{error}</p>
+      <div className="bg-crit/10 border border-crit/40 rounded-xs p-6 flex flex-col items-center justify-center gap-3 h-64">
+        <p className="text-crit text-sm">{error}</p>
         <button
           onClick={retry}
-          className="text-xs text-red-300 hover:text-white border border-red-700 px-3 py-1 rounded-lg transition-colors"
+          className="text-[10px] uppercase tracking-[0.1em] text-crit hover:bg-crit/10 border border-crit/50 px-3 py-1 rounded-xs transition-colors"
         >
           Retry
         </button>
@@ -79,7 +80,7 @@ export default function ModelHealth({
 
   if (!data) {
     return (
-      <div className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-6 flex items-center justify-center text-gray-500 h-64">
+      <div className="bg-panel border border-hairline rounded-xs p-6 flex items-center justify-center text-ink-low h-64">
         Loading model health...
       </div>
     );
@@ -88,7 +89,7 @@ export default function ModelHealth({
   return (
     <div className="space-y-3">
       {refreshError && (
-        <p className="rounded border border-yellow-700/40 bg-yellow-900/10 px-3 py-1.5 text-xs text-yellow-300/80">
+        <p className="rounded-xs border border-warn/40 bg-warn/10 px-3 py-1.5 text-xs text-warn">
           {refreshError}
         </p>
       )}
@@ -101,15 +102,15 @@ export default function ModelHealth({
       >
         <div className="p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-xs text-gray-500">
+            <p className="text-[10px] text-ink-low">
               Full breakdown for the current window.
             </p>
             <button
               onClick={onClose}
-              className="text-gray-500 hover:text-white text-lg leading-none px-1 ml-3"
+              className="text-ink-low hover:text-ink px-1 ml-3"
               aria-label="Close model health details"
             >
-              ✕
+              <IconX size={14} />
             </button>
           </div>
           <ModelHealthView data={data} />

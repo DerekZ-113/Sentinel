@@ -27,7 +27,9 @@ export default function LiveTopBar({
   return (
     <TopBar health={health}>
       <div className="flex items-center gap-2">
-        <span className="text-gray-500 text-[11px]">Live Refresh</span>
+        <span className="text-ink-micro text-[10px] uppercase tracking-[0.1em]">
+          Live Refresh
+        </span>
         <button
           type="button"
           onClick={onToggleLiveRefresh}
@@ -35,10 +37,10 @@ export default function LiveTopBar({
             liveRefreshEnabled ? "Turn live refresh off" : "Turn live refresh on"
           }
           aria-pressed={liveRefreshEnabled}
-          className={`rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors ${
+          className={`rounded-xs px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] transition-colors ${
             liveRefreshEnabled
-              ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
-              : "bg-gray-800 text-gray-400 border border-gray-700"
+              ? "bg-ok/10 text-ok border border-ok/50"
+              : "bg-inset text-ink-mid border border-hairline-2"
           }`}
         >
           {liveRefreshEnabled ? "On" : "Off"}
@@ -46,10 +48,10 @@ export default function LiveTopBar({
       </div>
 
       {lastUpdatedText && (
-        <p className="text-gray-600 text-[10px]">Last updated {lastUpdatedText}</p>
+        <p className="text-ink-low text-[10px]">Last updated {lastUpdatedText}</p>
       )}
       {liveRefreshEnabled && refreshError && (
-        <p className="text-yellow-300/80 text-[10px] leading-snug">
+        <p className="text-warn text-[10px] leading-snug">
           {refreshError}
         </p>
       )}
@@ -57,7 +59,7 @@ export default function LiveTopBar({
       <div className="ml-auto">
         <button
           onClick={onSimulate}
-          className="bg-blue-600 hover:bg-blue-500 text-white font-medium px-3 py-1.5 rounded-lg transition-colors"
+          className="border border-accent/60 text-accent hover:bg-accent/10 rounded-xs px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.1em] transition-colors"
         >
           Simulate
         </button>

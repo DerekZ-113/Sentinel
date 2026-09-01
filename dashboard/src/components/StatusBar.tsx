@@ -1,10 +1,9 @@
 /**
  * Demo-mode status bar: LIVE indicator, clock, fleet reporting count,
- * last-event age, Simulate trigger, and a dismissible synthetic-replay
- * notice — rendered on the shared TopBar shell.
+ * last-event age, Simulate trigger, and the always-visible SIM
+ * annunciator — rendered on the shared TopBar shell.
  */
 
-import { useState } from "react";
 import TopBar from "./TopBar";
 import { getEngine } from "../demo/engineInstance";
 import { useEngineSnapshot, useNow } from "../demo/useEngine";
@@ -25,7 +24,6 @@ export default function StatusBar({
 }: StatusBarProps) {
   const snapshot = useEngineSnapshot(engine);
   const now = useNow(1000);
-  const [noticeDismissed, setNoticeDismissed] = useState(false);
 
   const lastEvent =
     snapshot.lastEventAt !== null
@@ -34,49 +32,39 @@ export default function StatusBar({
 
   return (
     <TopBar health={health}>
-      <span className="flex items-center gap-1.5 font-semibold text-emerald-400">
-        <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60 motion-reduce:hidden" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
-        </span>
+      <span className="flex items-center gap-1.5 font-semibold tracking-[0.08em] text-ok">
+        <span className="h-2 w-2 bg-ok" />
         LIVE
       </span>
 
-      <span className="text-gray-400 font-mono tabular-nums">{clockTime(now)}</span>
+      <span className="text-ink-data tabular-nums">{clockTime(now) + "Z"}</span>
 
-      <span className="text-gray-400">
-        <span className="text-white font-medium tabular-nums">
+      <span className="text-[10px] uppercase tracking-[0.1em] text-ink-micro">
+        <span className="text-ink font-medium tabular-nums">
           {snapshot.vehiclesRecent}/{snapshot.vehiclesTotal}
         </span>{" "}
         vehicles reporting
       </span>
 
-      <span className="text-gray-500 tabular-nums">last event {lastEvent}</span>
+      <span className="text-[10px] uppercase tracking-[0.1em] text-ink-low tabular-nums">
+        last event {lastEvent}
+      </span>
 
       <div className="ml-auto flex items-center gap-3">
-        {!noticeDismissed && (
-          <span className="hidden sm:flex items-center gap-2 text-gray-500 bg-gray-900/80 border border-gray-800 rounded-full px-3 py-1">
-            Synthetic replay — not real fleet data.{" "}
-            <a
-              href="https://github.com/DerekZ-113/Sentinel"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-400 hover:text-blue-300 underline"
-            >
-              GitHub
-            </a>
-            <button
-              onClick={() => setNoticeDismissed(true)}
-              className="text-gray-500 hover:text-gray-300"
-              aria-label="Dismiss notice"
-            >
-              ✕
-            </button>
-          </span>
-        )}
+        <span className="hidden sm:flex items-center gap-2 border border-warn/50 bg-warn/10 text-warn rounded-xs px-2.5 py-0.5 text-[10px] uppercase tracking-[0.1em]">
+          SIM · Synthetic replay
+          <a
+            href="https://github.com/DerekZ-113/Sentinel"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-accent hover:text-ink underline underline-offset-2"
+          >
+            GitHub
+          </a>
+        </span>
         <button
           onClick={onSimulate}
-          className="bg-blue-600 hover:bg-blue-500 text-white font-medium px-3 py-1.5 rounded-lg transition-colors"
+          className="border border-accent/60 text-accent hover:bg-accent/10 rounded-xs px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.1em] transition-colors"
         >
           Simulate
         </button>

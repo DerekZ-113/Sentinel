@@ -42,7 +42,7 @@ export default function DrawerShell({
 
       {/* Drawer */}
       <aside
-        className={`fixed inset-y-0 right-0 z-50 bg-gray-900 border-l border-gray-800 overflow-y-auto ${widthClassName}`}
+        className={`fixed inset-y-0 right-0 z-50 bg-panel border-l border-hairline overflow-y-auto ${widthClassName}`}
         role="dialog"
         aria-label={ariaLabel}
       >

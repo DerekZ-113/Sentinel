@@ -1,5 +1,7 @@
 /**
  * Row cells shared by AlertFeed (live) and LiveAlertFeed (demo).
+ * Chip copy stays lowercase in textContent ("Flag"/"Suppress"/type names);
+ * the uppercase presentation is CSS-only (DESIGN.md rule).
  */
 
 export function TypeBadge({
@@ -10,14 +12,12 @@ export function TypeBadge({
   subtype: string | null;
 }) {
   const colors: Record<string, string> = {
-    verification_request: "bg-blue-900/50 text-blue-300 border-blue-800/50",
-    stuck: "bg-amber-900/50 text-amber-300 border-amber-800/50",
-    emergency_vehicle_alert:
-      "bg-red-900/50 text-red-300 border-red-800/50",
-    speed_anomaly:
-      "bg-purple-900/50 text-purple-300 border-purple-800/50",
-    impact_l0: "bg-orange-900/50 text-orange-300 border-orange-800/50",
-    passenger_assist: "bg-cyan-900/50 text-cyan-300 border-cyan-800/50",
+    verification_request: "text-tag-verif border-tag-verif/40 bg-tag-verif/14",
+    stuck: "text-tag-stuck border-tag-stuck/40 bg-tag-stuck/14",
+    emergency_vehicle_alert: "text-tag-ev border-tag-ev/40 bg-tag-ev/14",
+    speed_anomaly: "text-tag-speed border-tag-speed/40 bg-tag-speed/14",
+    impact_l0: "text-tag-impact border-tag-impact/40 bg-tag-impact/14",
+    passenger_assist: "text-tag-pax border-tag-pax/40 bg-tag-pax/14",
   };
 
   return (
@@ -26,17 +26,31 @@ export function TypeBadge({
       title={subtype ? `${type}/${subtype}` : type}
     >
       <span
-        className={`inline-block px-2 py-0.5 rounded text-xs border whitespace-nowrap ${
-          colors[type] || "bg-gray-800 text-gray-300 border-gray-700"
+        className={`inline-block px-1.5 py-0.5 rounded-xs text-[9.5px] uppercase tracking-[0.05em] border whitespace-nowrap ${
+          colors[type] || "text-ink-mid border-hairline-2 bg-inset"
         }`}
       >
         {type.replace(/_/g, " ")}
       </span>
       {subtype && (
-        <span className="block text-[10px] text-gray-500 truncate">
+        <span className="block text-[9.5px] text-ink-low truncate">
           {subtype.replace(/_/g, " ")}
         </span>
       )}
+    </span>
+  );
+}
+
+export function VerdictChip({ flagged }: { flagged: boolean }) {
+  return (
+    <span
+      className={`inline-block px-1.5 py-0.5 rounded-xs border text-[9.5px] uppercase tracking-[0.05em] font-medium whitespace-nowrap ${
+        flagged
+          ? "text-crit border-crit/40 bg-crit/14"
+          : "text-ok border-ok/40 bg-ok/14"
+      }`}
+    >
+      {flagged ? "Flag" : "Suppress"}
     </span>
   );
 }
@@ -45,21 +59,16 @@ export function ConfidenceBar({ value }: { value: number }) {
   const pct = Math.round(value * 100);
   const width = `${pct}%`;
   const color =
-    pct >= 90
-      ? "bg-emerald-500"
-      : pct >= 70
-      ? "bg-yellow-500"
-      : "bg-red-500";
+    pct >= 90 ? "bg-ok" : pct >= 70 ? "bg-warn" : "bg-crit";
 
   return (
-    <div className="relative inline-block align-middle w-16 h-4 bg-gray-700 rounded-full overflow-hidden">
-      <div
-        className={`h-full rounded-full ${color} opacity-70`}
-        style={{ width }}
-      />
-      <span className="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-white leading-none">
+    <span className="inline-flex w-16 flex-col items-end gap-[3px] align-middle">
+      <span className="text-[10px] leading-none tabular-nums text-ink-data">
         {pct}%
       </span>
-    </div>
+      <span className="block h-[3px] w-full overflow-hidden bg-inset">
+        <span className={`block h-full ${color}`} style={{ width }} />
+      </span>
+    </span>
   );
 }

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { StatsResponse } from "../services/api";
-import AnimatedNumber from "./AnimatedNumber";
+import ValueFlash from "./ValueFlash";
 
 interface OverviewCardsProps {
   stats: StatsResponse;
@@ -12,7 +12,7 @@ function StatCard({
   label,
   value,
   subtitle,
-  color = "text-white",
+  color = "text-ink",
 }: {
   label: string;
   value: ReactNode;
@@ -20,11 +20,11 @@ function StatCard({
   color?: string;
 }) {
   return (
-    <div className="bg-gray-800/60 border border-gray-700/50 rounded-xl px-3.5 py-2.5">
-      <p className="text-gray-400 text-sm font-medium">{label}</p>
-      <p className={`text-xl font-bold mt-0.5 ${color}`}>{value}</p>
+    <div className="bg-panel border border-hairline rounded-xs px-3.5 py-2.5">
+      <p className="text-ink-micro text-[10px] uppercase tracking-[0.1em]">{label}</p>
+      <p className={`text-[22px] font-medium tabular-nums mt-0.5 ${color}`}>{value}</p>
       {subtitle && (
-        <p className="text-gray-500 text-[11px] mt-0.5 truncate">{subtitle}</p>
+        <p className="text-ink-low text-[10px] mt-0.5 truncate">{subtitle}</p>
       )}
     </div>
   );
@@ -42,26 +42,26 @@ export default function OverviewCards({ stats, windowLabel }: OverviewCardsProps
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       <StatCard
         label="Total Alerts"
-        value={<AnimatedNumber value={stats.total_alerts} />}
+        value={<ValueFlash value={stats.total_alerts} />}
         subtitle={windowLabel ?? `Last ${stats.time_window_hours}h`}
       />
       <StatCard
         label="Flagged for Review"
-        value={<AnimatedNumber value={stats.total_flagged} />}
+        value={<ValueFlash value={stats.total_flagged} />}
         subtitle="Predicted as needing intervention"
-        color="text-red-400"
+        color="text-crit"
       />
       <StatCard
         label="Suppressed"
-        value={<AnimatedNumber value={stats.total_suppressed} />}
+        value={<ValueFlash value={stats.total_suppressed} />}
         subtitle={`${suppressionRate}% of alerts filtered`}
-        color="text-emerald-400"
+        color="text-ok"
       />
       <StatCard
         label="Model FP Rate"
         value={
           fpRate !== null ? (
-            <AnimatedNumber
+            <ValueFlash
               value={fpRate * 100}
               format={(n) => `${n.toFixed(1)}%`}
             />
@@ -72,10 +72,10 @@ export default function OverviewCards({ stats, windowLabel }: OverviewCardsProps
         subtitle="Among flagged alerts"
         color={
           fpRate !== null && fpRate < 0.3
-            ? "text-emerald-400"
+            ? "text-ok"
             : fpRate !== null && fpRate < 0.5
-            ? "text-yellow-400"
-            : "text-red-400"
+            ? "text-warn"
+            : "text-crit"
         }
       />
     </div>

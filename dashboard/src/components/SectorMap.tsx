@@ -4,6 +4,8 @@
  * manual alerts without coordinates get a stable hash-based position.
  */
 
+import { CHART } from "./chartTheme";
+
 const LAT_MIN = 37.3;
 const LAT_MAX = 37.8;
 const LON_MIN = -122.5;
@@ -35,16 +37,7 @@ interface SectorMapProps {
   seed: string;
 }
 
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}
-
 export default function SectorMap({ latitude, longitude, seed }: SectorMapProps) {
-  const animatePulse = !prefersReducedMotion();
   const nx =
     longitude !== null && longitude !== undefined
       ? clamp01((longitude - LON_MIN) / (LON_MAX - LON_MIN))
@@ -68,44 +61,44 @@ export default function SectorMap({ latitude, longitude, seed }: SectorMapProps)
     <div className="relative">
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        className="w-full rounded-lg border border-gray-700/50 bg-gray-900"
+        className="w-full rounded-xs border border-hairline bg-inset"
         role="img"
         aria-label={`Vehicle location, sector ${sector}`}
       >
         {/* Sector grid */}
         {vLines.map((gx) => (
-          <line key={`v${gx}`} x1={gx} y1={0} x2={gx} y2={H} stroke="#1f2937" strokeWidth={1} />
+          <line key={`v${gx}`} x1={gx} y1={0} x2={gx} y2={H} stroke={CHART.line} strokeWidth={1} />
         ))}
         {hLines.map((gy) => (
-          <line key={`h${gy}`} x1={0} y1={gy} x2={W} y2={gy} stroke="#1f2937" strokeWidth={1} />
+          <line key={`h${gy}`} x1={0} y1={gy} x2={W} y2={gy} stroke={CHART.line} strokeWidth={1} />
         ))}
 
         {/* Stylized streets */}
         <polyline
           points={`0,${H * 0.72} ${W * 0.3},${H * 0.66} ${W * 0.55},${H * 0.7} ${W},${H * 0.6}`}
           fill="none"
-          stroke="#374151"
+          stroke={CHART.hairlineStrong}
           strokeWidth={3}
           strokeLinecap="round"
         />
         <polyline
           points={`0,${H * 0.3} ${W * 0.45},${H * 0.34} ${W},${H * 0.26}`}
           fill="none"
-          stroke="#374151"
+          stroke={CHART.hairlineStrong}
           strokeWidth={2}
           strokeLinecap="round"
         />
         <polyline
           points={`${W * 0.25},0 ${W * 0.28},${H * 0.5} ${W * 0.22},${H}`}
           fill="none"
-          stroke="#374151"
+          stroke={CHART.hairlineStrong}
           strokeWidth={2}
           strokeLinecap="round"
         />
         <polyline
           points={`${W * 0.7},0 ${W * 0.66},${H * 0.55} ${W * 0.74},${H}`}
           fill="none"
-          stroke="#374151"
+          stroke={CHART.hairlineStrong}
           strokeWidth={2}
           strokeLinecap="round"
         />
@@ -115,24 +108,16 @@ export default function SectorMap({ latitude, longitude, seed }: SectorMapProps)
           y1={H * 0.05}
           x2={W}
           y2={H * 0.95}
-          stroke="#4b5563"
+          stroke={CHART.hairlineStrong}
           strokeWidth={2.5}
           strokeDasharray="8 5"
           opacity={0.5}
         />
 
-        {/* Vehicle marker with pulse */}
-        <circle cx={x} cy={y} r={4} fill="#3b82f6" opacity={0.35}>
-          {animatePulse && (
-            <>
-              <animate attributeName="r" values="4;11;4" dur="2s" repeatCount="indefinite" />
-              <animate attributeName="opacity" values="0.35;0;0.35" dur="2s" repeatCount="indefinite" />
-            </>
-          )}
-        </circle>
-        <circle cx={x} cy={y} r={3.5} fill="#3b82f6" stroke="#bfdbfe" strokeWidth={1} />
+        {/* Vehicle marker — steady (no pulse; motion is reserved for data) */}
+        <circle cx={x} cy={y} r={3.5} fill={CHART.accent} stroke={CHART.ink} strokeWidth={1} />
       </svg>
-      <span className="absolute top-1.5 right-2 text-[10px] font-mono text-gray-500">
+      <span className="absolute top-1.5 right-2 text-[10px] uppercase tracking-[0.1em] text-ink-micro">
         Sector {sector}
       </span>
     </div>

@@ -68,7 +68,7 @@ describe("AlertDetailDrawer", () => {
       />
     );
     expect(screen.getByText("vehicle_042")).toBeInTheDocument();
-    expect(screen.getByText("⚠ Flagged for review")).toBeInTheDocument();
+    expect(screen.getByText("Flagged for review")).toBeInTheDocument();
     expect(screen.getByText(/Ground truth: real/)).toBeInTheDocument();
     expect(screen.getByText(/correct/)).toBeInTheDocument();
     expect(screen.getByText("0.910")).toBeInTheDocument();

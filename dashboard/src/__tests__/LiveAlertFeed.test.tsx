@@ -58,7 +58,7 @@ describe("LiveAlertFeed", () => {
       vi.advanceTimersByTime(3000);
     });
 
-    expect(screen.getByText("3 new alerts ↑")).toBeInTheDocument();
+    expect(screen.getByText("3 new alerts")).toBeInTheDocument();
     // Frozen: still showing the 20 prewarmed rows despite 23 dealt
     expect(screen.getAllByRole("row")).toHaveLength(21);
     engine.stop();
@@ -73,7 +73,7 @@ describe("LiveAlertFeed", () => {
     act(() => {
       vi.advanceTimersByTime(2000);
     });
-    fireEvent.click(screen.getByText("2 new alerts ↑"));
+    fireEvent.click(screen.getByText("2 new alerts"));
 
     expect(screen.queryByText(/new alert/)).not.toBeInTheDocument();
     expect(screen.getAllByRole("row")).toHaveLength(23);
@@ -135,7 +135,7 @@ describe("LiveAlertFeed", () => {
       });
     });
 
-    expect(screen.getByText("2 new alerts ↑")).toBeInTheDocument();
+    expect(screen.getByText("2 new alerts")).toBeInTheDocument();
   });
 
   it("badges manual alerts and reports row clicks via onSelect", () => {

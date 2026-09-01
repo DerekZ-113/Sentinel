@@ -15,6 +15,7 @@ import LiveTopBar from "./components/LiveTopBar";
 import AlertDetailDrawer from "./components/AlertDetailDrawer";
 import SimulateDrawer from "./components/SimulateDrawer";
 import LiveSimulateDrawer from "./components/LiveSimulateDrawer";
+import { IconX } from "./components/icons";
 import type { DemoAlert } from "./demo/types";
 
 // Module-scope selection: DEMO_MODE is a build-time constant, so Rollup
@@ -76,11 +77,11 @@ function App() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center gap-4">
-        <p className="text-red-400 text-xl">API Error: {error}</p>
+      <div className="min-h-screen bg-canvas flex flex-col items-center justify-center gap-4">
+        <p className="text-crit text-xl">API Error: {error}</p>
         <button
           onClick={retry}
-          className="text-sm text-red-300 hover:text-white border border-red-700 px-4 py-2 rounded-lg transition-colors"
+          className="text-[11px] uppercase tracking-[0.1em] text-crit hover:bg-crit/10 border border-crit/50 px-4 py-2 rounded-xs transition-colors"
         >
           Retry
         </button>
@@ -90,14 +91,14 @@ function App() {
 
   if (!health || !stats) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center text-gray-400 text-xl">
+      <div className="min-h-screen bg-canvas flex items-center justify-center text-ink-mid text-xl">
         Loading...
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen lg:h-screen lg:overflow-hidden bg-gray-950 text-white flex flex-col">
+    <div className="min-h-screen lg:h-screen lg:overflow-hidden bg-canvas text-ink flex flex-col">
       {DEMO_MODE ? (
         <StatusBar health={health} onSimulate={() => setSimulateOpen(true)} />
       ) : (
@@ -120,15 +121,17 @@ function App() {
         <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[62fr_38fr] gap-4">
           <section className="min-h-0 flex flex-col">
             {selectedType && (
-              <div className="mb-2 flex items-center gap-2 text-xs">
-                <span className="text-gray-500">filtered:</span>
+              <div className="mb-2 flex items-center gap-2">
+                <span className="text-ink-micro text-[10px] uppercase tracking-[0.1em]">
+                  filtered:
+                </span>
                 <button
                   onClick={() => setSelectedType(null)}
                   aria-label="Clear type filter"
-                  className="flex items-center gap-1.5 bg-blue-900/40 border border-blue-800/50 text-blue-300 rounded-full px-2.5 py-0.5 hover:bg-blue-900/60 transition-colors"
+                  className="flex items-center gap-1.5 text-accent border border-accent/40 bg-accent/14 rounded-xs px-2.5 py-0.5 text-[10px] uppercase tracking-[0.05em] hover:bg-accent/20 transition-colors"
                 >
                   {selectedType.replace(/_/g, " ")}
-                  <span aria-hidden="true">×</span>
+                  <IconX size={8} />
                 </button>
               </div>
             )}

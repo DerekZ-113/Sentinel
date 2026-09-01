@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import type { TypeStats } from "../services/api";
+import { CHART, AXIS_TICK, TOOLTIP_STYLE, LEGEND_STYLE } from "./chartTheme";
 
 interface TypeBreakdownProps {
   byType: TypeStats[];
@@ -60,10 +61,10 @@ export default function TypeBreakdown({
 
   return (
     <div
-      className="bg-gray-800/40 border border-gray-700/50 rounded-xl p-5 flex flex-col"
+      className="bg-panel border border-hairline rounded-xs p-5 flex flex-col"
       style={{ height: heightPx }}
     >
-      <h2 className="text-base font-semibold text-white mb-2.5">
+      <h2 className="text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-mid mb-2.5">
         Alerts by Notification Type
       </h2>
 
@@ -71,32 +72,26 @@ export default function TypeBreakdown({
         <BarChart data={data} barGap={2}>
           <XAxis
             dataKey="name"
-            tick={{ fill: "#9ca3af", fontSize: 12 }}
-            axisLine={{ stroke: "#374151" }}
+            tick={AXIS_TICK}
+            axisLine={{ stroke: CHART.hairlineStrong }}
             tickLine={false}
           />
           <YAxis
-            tick={{ fill: "#9ca3af", fontSize: 12 }}
+            tick={AXIS_TICK}
             axisLine={false}
             tickLine={false}
           />
           <Tooltip
-            contentStyle={{
-              backgroundColor: "#1f2937",
-              border: "1px solid #374151",
-              borderRadius: "8px",
-              color: "#f3f4f6",
-              fontSize: "13px",
-            }}
+            contentStyle={TOOLTIP_STYLE}
             cursor={{ fill: "rgba(255,255,255,0.03)" }}
           />
           <Legend
-            wrapperStyle={{ fontSize: "13px", color: "#9ca3af" }}
+            wrapperStyle={LEGEND_STYLE}
           />
-          <Bar dataKey="Suppressed" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} isAnimationActive={animate}>
+          <Bar dataKey="Suppressed" stackId="a" fill={CHART.ok} radius={[0, 0, 0, 0]} isAnimationActive={animate}>
             {cells("s")}
           </Bar>
-          <Bar dataKey="Flagged" stackId="a" fill="#ef4444" radius={[4, 4, 0, 0]} isAnimationActive={animate}>
+          <Bar dataKey="Flagged" stackId="a" fill={CHART.crit} radius={[2, 2, 0, 0]} isAnimationActive={animate}>
             {cells("f")}
           </Bar>
         </BarChart>

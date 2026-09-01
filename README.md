@@ -189,7 +189,7 @@ The React dashboard is an above-the-fold operations console:
 
 ### Demo mode
 
-The hosted demo (`VITE_DEMO_MODE=true`) has no backend: a replay engine deals the 1,000 bundled synthetic alerts onto a live timeline (Poisson-spaced, with bursts), and every surface — counters, charts, feed, model health — derives from that single stream. A status bar shows the honest fleet-reporting count and a dismissible synthetic-replay notice. Live-API builds tree-shake the entire demo layer, fixtures included.
+The hosted demo (`VITE_DEMO_MODE=true`) has no backend: a replay engine deals the 1,000 bundled synthetic alerts onto a live timeline (Poisson-spaced, with bursts), and every surface — counters, charts, feed, model health — derives from that single stream. A status bar shows the honest fleet-reporting count and an always-visible SIM annunciator marking the data as a synthetic replay. Live-API builds tree-shake the entire demo layer, fixtures included.
 
 ---
 
